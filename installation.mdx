@@ -81,7 +81,7 @@ This path auto-detects your host architecture and libc, downloads the seed bundl
 
 During an automatic bootstrap, the script verifies that the seed bundle carries the expected channel public key before reading any index. The SHA-256 of the key that authorises every package manifest is:
 
-```
+```text
 c02df2e12216f6f633d94206634bbe8f244d74f610b29e922d7ea8bab2efb307
 ```
 
@@ -100,6 +100,7 @@ Both `bootstrap-vitasdk.sh` and `bootstrap-vitasdk.ps1` accept the following opt
 | `--install-dir PATH` | `-InstallDirectory PATH` | `VITASDK` | Destination directory (must not exist) |
 | `--url URL` | `-Url URL` | `VITASDK_BOOTSTRAP_URL` | Explicit archive URL (skips series selection) |
 | `--sha256 HEX` | `-Sha256 HEX` | `VITASDK_BOOTSTRAP_SHA256` | Expected SHA-256 of the archive (64 hex chars) |
+| *(none)* | `-ArchivePath PATH` | `VITASDK_BOOTSTRAP_ARCHIVE` | Path to a local archive for offline installs; SHA-256 still required |
 | *(none)* | `-Channel NAME` | `VITASDK_CHANNEL` | Release series to install (e.g. `nightly`) |
 
 ## Custom install directory
@@ -179,7 +180,7 @@ vdpm status
 
 This prints the active release series, the sequence number of the current channel manifest, the installed toolchain version, and the number of installed packages. A healthy output looks like:
 
-```
+```text
 Release   2025.04
 Sequence  42
 Toolchain 2025.04-1

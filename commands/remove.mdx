@@ -1,5 +1,5 @@
 ---
-title: "Remove Installed Packages from VitaSDK with vdpm"
+title: "Remove Installed VitaSDK Packages with vdpm remove"
 sidebarTitle: "Remove"
 description: "Uninstall one or more packages from your VitaSDK prefix. vdpm remove passes --remove to the embedded pacman and requires at least one name."
 ---
@@ -8,7 +8,7 @@ The `remove` command uninstalls packages from your SDK root by delegating to the
 
 ## Usage
 
-```
+```bash
 vdpm remove PACKAGE...
 ```
 
@@ -56,7 +56,7 @@ The short flag `-u` is accepted for compatibility and behaves identically to `vd
 
 The release banner is printed to stderr before the remove transaction runs:
 
-```
+```text
 :: VitaSDK 2024.11 (sequence 42)
 ```
 

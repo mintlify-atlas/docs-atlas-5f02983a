@@ -112,7 +112,7 @@ Windows support is x86_64 only. The host triplet used throughout the toolchain a
 
 On Windows, pacman and the channel helper live under a separate MSYS subtree:
 
-```
+```text
 %VITASDK%\
   bin\
     vdpm.exe              ← native Windows frontend
@@ -167,7 +167,7 @@ vdpm status
   `vdpm upgrade` refuses with an error and tells you to run the bootstrap script
   instead:
 
-  ```
+  ```text
   vdpm: this update replaces the toolchain, which includes vdpm and
   pacman themselves. Windows cannot overwrite a program while it is
   running, so run the bootstrap script again instead:

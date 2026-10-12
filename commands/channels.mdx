@@ -1,5 +1,5 @@
 ---
-title: "List Available VitaSDK Release Channels with vdpm"
+title: "List Available VitaSDK Release Channels with vdpm channels"
 sidebarTitle: "Channels"
 description: "Download and display all available VitaSDK release series, their support status, and a summary. Marks the currently active series with an asterisk."
 ---
@@ -8,7 +8,7 @@ The `channels` command fetches the signed channel index from `https://vitasdk.or
 
 ## Usage
 
-```
+```bash
 vdpm channels
 ```
 
@@ -20,7 +20,7 @@ The table always includes `RELEASE`, `STATUS`, and `SUMMARY` columns. A `WORLD` 
 
 The currently active release — the one recorded in `$VITASDK/var/lib/vdpm/channel.json` — is marked with an asterisk (`*`) in the first column.
 
-```
+```text
 RELEASE        STATUS         SUMMARY
 *2024.11       supported      VitaSDK November 2024
  nightly       supported      Rolling nightly builds
@@ -28,7 +28,7 @@ RELEASE        STATUS         SUMMARY
 
 If more than one world is present in the index:
 
-```
+```text
 RELEASE        STATUS         WORLD          SUMMARY
 *2024.11       supported      vita           VitaSDK November 2024
  nightly       supported      vita           Rolling nightly builds
@@ -36,7 +36,7 @@ RELEASE        STATUS         WORLD          SUMMARY
 
 A legend line is printed below the table when an active release is detected:
 
-```
+```text
 * is the release this installation follows.
 ```
 

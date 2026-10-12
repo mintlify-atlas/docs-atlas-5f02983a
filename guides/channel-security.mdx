@@ -35,7 +35,7 @@ Every package vdpm installs passes through a chain of cryptographic checks befor
   public key file inside the seed and compares it to a value hardcoded in the
   bootstrap script:
 
-  ```
+  ```text
   c02df2e12216f6f633d94206634bbe8f244d74f610b29e922d7ea8bab2efb307
   ```
 
@@ -150,6 +150,7 @@ The entire model is designed to fail closed:
 - A database whose SHA-256 does not match the manifest is not copied to the sync directory.
 - A transaction that fails does not advance the staged manifest to the committed position.
 - A refresh that cannot find the public key at `$VITASDK_CHANNEL_PUBLIC_KEY` refuses to proceed.
+- A refresh refuses immediately if `$VITASDK/var/lib/pacman/db.lck` exists, leaving the current configuration untouched. The lock file is created by pacman at the start of any transaction; if it is present without a running transaction, an interrupted run left it behind and it is safe to remove manually.
 
 There is no fallback to an unverified path.
 

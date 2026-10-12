@@ -12,7 +12,7 @@ The `search` command queries the active sync database for packages whose name or
 
 ### Usage
 
-```
+```bash
 vdpm search TERM...
 ```
 
@@ -26,7 +26,7 @@ vdpm search image
 
 Sample output:
 
-```
+```text
 vita/libpng 1.6.43-1
     PNG image library
 
@@ -45,7 +45,7 @@ The `info` command prints the full metadata record for a package from the sync d
 
 ### Usage
 
-```
+```bash
 vdpm info PACKAGE...
 ```
 
@@ -59,7 +59,7 @@ vdpm info sdl2
 
 Sample output:
 
-```
+```text
 Repository      : vita
 Name            : sdl2
 Version         : 2.30.6-1
@@ -80,7 +80,7 @@ The `list` command queries the local pacman database to show installed packages.
 
 ### Usage
 
-```
+```bash
 vdpm list [PACKAGE...]
 ```
 
@@ -94,7 +94,7 @@ vdpm list
 
 Sample output:
 
-```
+```text
 sdl2 2.30.6-1
 zlib 1.3.1-1
 libpng 1.6.43-1
@@ -114,7 +114,7 @@ The `files` command lists every file that a package installed into the SDK root,
 
 ### Usage
 
-```
+```bash
 vdpm files PACKAGE...
 ```
 
@@ -128,7 +128,7 @@ vdpm files sdl2
 
 Sample output:
 
-```
+```text
 sdl2 /arm-vita-eabi/include/SDL2/SDL.h
 sdl2 /arm-vita-eabi/include/SDL2/SDL_audio.h
 sdl2 /arm-vita-eabi/lib/libSDL2.a

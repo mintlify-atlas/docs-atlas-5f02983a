@@ -8,7 +8,7 @@ The `install` command fetches packages from the active sync database and install
 
 ## Usage
 
-```
+```bash
 vdpm install [--force] PACKAGE...
 ```
 
@@ -46,7 +46,7 @@ vdpm install --force sdl2
 
 Every install prints the active series and sequence number to stderr before the transaction starts, for example:
 
-```
+```text
 :: VitaSDK 2024.11 (sequence 42)
 ```
 
@@ -56,7 +56,7 @@ If the installed series is `end-of-life` or `deprecated`, an additional notice a
 
 When a package name you supply on the command line is listed as deprecated in the channel manifest, vdpm prints a per-package message:
 
-```
+```text
 :: libfoo is deprecated: use libfoo2 instead
 ```
 

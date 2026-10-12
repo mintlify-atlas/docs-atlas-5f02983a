@@ -1,5 +1,5 @@
 ---
-title: "Upgrade VitaSDK Packages to Their Latest Versions"
+title: "Upgrade VitaSDK Packages to the Latest Available Version"
 sidebarTitle: "Upgrade"
 description: "Upgrade all installed VitaSDK packages or a named subset. On Windows, refuses if vitasdk-core would be replaced and redirects you to bootstrap-vitasdk.ps1."
 ---
@@ -8,7 +8,7 @@ The `upgrade` command brings installed packages up to the versions in the active
 
 ## Usage
 
-```
+```bash
 vdpm upgrade [PACKAGE...]
 ```
 
@@ -48,7 +48,7 @@ vdpm upgrade sdl2 zlib
   `vitasdk-core` is among the pending upgrades, vdpm refuses the transaction
   and prints:
 
-  ```
+  ```text
   vdpm: this update replaces the toolchain, which includes vdpm and
   pacman themselves. Windows cannot overwrite a program while it is
   running, so run the bootstrap script again instead:
@@ -73,7 +73,7 @@ vdpm upgrade sdl2 zlib
 
 The active series and sequence number are printed to stderr immediately before the upgrade transaction:
 
-```
+```text
 :: VitaSDK 2024.11 (sequence 42)
 ```
 
