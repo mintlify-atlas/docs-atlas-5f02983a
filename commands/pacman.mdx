@@ -1,0 +1,77 @@
+---
+title: "Pass Arguments Directly to Embedded pacman via vdpm"
+sidebarTitle: "Pacman Passthrough"
+description: "Use vdpm pacman to run the embedded pacman binary directly with all SDK paths pre-configured, accessing operations not exposed by vdpm's own subcommands."
+---
+
+The `pacman` subcommand is vdpm's escape hatch. It passes your arguments directly to the embedded pacman binary with the standard SDK path flags already applied — `--config`, `--root`, `--dbpath`, `--cachedir`, and `--logfile` — so you never have to supply those manually. Use it to reach pacman operations that vdpm does not expose as dedicated subcommands.
+
+## Usage
+
+```
+vdpm pacman [--] ARG...
+```
+
+At least one argument is required. The `--` separator is optional; include it when the first argument to pacman begins with `--` to make the boundary between vdpm's own flags and pacman's explicit.
+
+## Options
+
+<ParamField path="--" type="separator">
+  Optional argument separator. Everything after `--` is forwarded to pacman
+  verbatim. Conventional when the first pacman argument could otherwise be
+  ambiguous.
+</ParamField>
+
+<ParamField path="ARG..." type="string" required>
+  One or more arguments passed directly to the embedded pacman. All standard
+  pacman operations and flags are accepted.
+</ParamField>
+
+## Pre-applied flags
+
+vdpm always prepends the following flags before your arguments so pacman operates on the correct SDK root:
+
+| Flag | Value |
+|---|---|
+| `--config` | `$VITASDK/etc/pacman.conf` |
+| `--root` | `$VITASDK` |
+| `--dbpath` | `$VITASDK/var/lib/pacman` |
+| `--cachedir` | `$VITASDK/var/cache/pacman/pkg` |
+| `--logfile` | `$VITASDK/var/log/pacman.log` |
+
+## Examples
+
+Check database consistency:
+
+```bash
+vdpm pacman -- --database --check
+```
+
+Query detailed information from the local database (equivalent to `vdpm info` but reads from the local database instead of sync):
+
+```bash
+vdpm pacman -- --query --info zlib
+```
+
+List files owned by a package using the raw pacman interface:
+
+```bash
+vdpm pacman -- --query --list sdl2
+```
+
+## Differences from other commands
+
+<Note>
+  Unlike every other vdpm subcommand, `vdpm pacman` does **not** print the
+  release banner before running. This is intentional: its output is often
+  piped into other programs, and a banner on stderr would interfere with
+  scripts that parse combined output. The `--noscriptlet`, `--noconfirm`, and
+  `--noprogressbar` flags are also not added automatically — you control
+  exactly what flags pacman receives.
+</Note>
+
+<Tip>
+  If you find yourself using `vdpm pacman` for the same operation repeatedly,
+  that operation is a good candidate to request as a dedicated vdpm subcommand.
+  The passthrough exists to cover gaps, not to be the primary interface.
+</Tip>

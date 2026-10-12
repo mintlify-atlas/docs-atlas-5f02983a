@@ -1,0 +1,59 @@
+---
+title: "List Available VitaSDK Release Channels with vdpm"
+sidebarTitle: "Channels"
+description: "Download and display all available VitaSDK release series, their support status, and a summary. Marks the currently active series with an asterisk."
+---
+
+The `channels` command fetches the signed channel index from `https://vitasdk.org/channels/index.json`, verifies its Ed25519 signature against the public key installed in your SDK root, and prints a formatted table of every available release series. It also saves a local copy of the index so that `vdpm status` can report support status without making a network request.
+
+## Usage
+
+```
+vdpm channels
+```
+
+No arguments are accepted.
+
+## Output
+
+The table always includes `RELEASE`, `STATUS`, and `SUMMARY` columns. A `WORLD` column is added automatically when the index contains releases for more than one ABI world, so the listing stays uncluttered for the common case.
+
+The currently active release — the one recorded in `$VITASDK/var/lib/vdpm/channel.json` — is marked with an asterisk (`*`) in the first column.
+
+```
+RELEASE        STATUS         SUMMARY
+*2024.11       supported      VitaSDK November 2024
+ nightly       supported      Rolling nightly builds
+```
+
+If more than one world is present in the index:
+
+```
+RELEASE        STATUS         WORLD          SUMMARY
+*2024.11       supported      vita           VitaSDK November 2024
+ nightly       supported      vita           Rolling nightly builds
+```
+
+A legend line is printed below the table when an active release is detected:
+
+```
+* is the release this installation follows.
+```
+
+## Status values
+
+| Status | Meaning |
+|---|---|
+| `supported` | Actively maintained; upgrades and new packages are published. |
+| `deprecated` | Still functional but superseded; migration is encouraged. |
+| `end-of-life` | No longer maintained; no further updates will be published. |
+
+## Local index cache
+
+After each successful run, `channels` writes the downloaded index to `$VITASDK/var/lib/vdpm/index.json`. The `vdpm status` command reads this cached file to determine whether the active series is `end-of-life` or `deprecated`, so it can issue warnings without going to the network.
+
+<Tip>
+  Run `vdpm channels` before `vdpm refresh` to confirm the exact series name
+  you want and to see which releases are currently supported. Series names are
+  case-sensitive.
+</Tip>

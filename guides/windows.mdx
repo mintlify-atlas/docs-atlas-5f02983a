@@ -1,0 +1,196 @@
+---
+title: "Installing and Running vdpm on Windows x86_64 Systems"
+sidebarTitle: "Windows"
+description: "Bootstrap VitaSDK on Windows with PowerShell 5.1, manage packages via native vdpm.exe, and understand the MSYS layout and self-replacement guard."
+---
+
+vdpm ships a native Windows frontend (`vdpm.exe`) that requires no Bash, WSL, MSYS, or Cygwin to run. The pacman binary and its MSYS runtime live in a deliberately separated subdirectory to prevent MSYS path remapping from interfering with the SDK toolchain. This page covers the full Windows workflow from first install to day-to-day package management.
+
+---
+
+## Prerequisites
+
+Windows 10 or later, x86_64. No additional software is required beyond what ships with Windows:
+
+- **PowerShell 5.1** — built into all supported Windows versions at `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe`. No upgrade or install is needed.
+- **tar.exe** — available in Windows 10 1803 and later (ships in `System32`).
+
+WSL, MSYS2, Git Bash, and Cygwin are not required. The bootstrap and all subsequent `vdpm` commands run natively.
+
+---
+
+## Bootstrap
+
+<Steps>
+
+### Clone the vdpm repository
+
+Open PowerShell and clone the bootstrap scripts:
+
+```powershell
+git clone https://github.com/vitasdk/vdpm
+cd vdpm
+```
+
+### Run the bootstrap script
+
+```powershell
+.\bootstrap-vitasdk.ps1
+```
+
+The script downloads the seed bundle for `x86_64-w64-mingw32`, verifies its SHA-256, extracts it to a temporary staging directory, verifies the channel public key inside the seed, selects the newest supported release series from the signed channel index, runs `vdpm refresh` to write the verified package databases, and installs `vitasdk-core` via pacman — all before moving the finished SDK into place. A failed bootstrap leaves no partial installation at the destination.
+
+### Set environment variables
+
+After the bootstrap completes, set `VITASDK` and add the toolchain to `PATH`. In PowerShell for the current session:
+
+```powershell
+$env:VITASDK = 'C:\vitasdk'
+$env:PATH = "$env:VITASDK\bin;$env:PATH"
+```
+
+To persist these across sessions, add them to your PowerShell profile or set them as user environment variables in System Properties.
+
+<CodeGroup>
+
+```powershell PowerShell profile
+# Add to $PROFILE
+$env:VITASDK = 'C:\vitasdk'
+$env:PATH = "$env:VITASDK\bin;$env:PATH"
+```
+
+```batch Command Prompt (setx)
+setx VITASDK "C:\vitasdk"
+setx PATH "%VITASDK%\bin;%PATH%"
+```
+
+</CodeGroup>
+
+</Steps>
+
+---
+
+## Bootstrap script parameters
+
+`bootstrap-vitasdk.ps1` accepts named parameters that correspond to the environment variables used on Unix:
+
+| Parameter | Env var equivalent | Default |
+|---|---|---|
+| `-InstallDirectory` | `VITASDK` | `C:\vitasdk` |
+| `-Url` | `VITASDK_BOOTSTRAP_URL` | *(automatic seed URL)* |
+| `-Sha256` | `VITASDK_BOOTSTRAP_SHA256` | *(from sidecar file)* |
+| `-ArchivePath` | `VITASDK_BOOTSTRAP_ARCHIVE` | *(none)* |
+| `-Channel` | `VITASDK_CHANNEL` | *(newest supported)* |
+
+To install into a custom directory:
+
+```powershell
+.\bootstrap-vitasdk.ps1 -InstallDirectory D:\vitasdk
+```
+
+To select a specific release series:
+
+```powershell
+.\bootstrap-vitasdk.ps1 -Channel nightly
+```
+
+To install from a pre-downloaded archive (offline):
+
+```powershell
+.\bootstrap-vitasdk.ps1 -ArchivePath C:\Downloads\vitasdk.tar.bz2 -Sha256 '<64 hex characters>'
+```
+
+---
+
+## Architecture
+
+Windows support is x86_64 only. The host triplet used throughout the toolchain and package databases is `x86_64-w64-mingw32`. There are no 32-bit or ARM Windows builds.
+
+---
+
+## MSYS layout
+
+On Windows, pacman and the channel helper live under a separate MSYS subtree:
+
+```
+%VITASDK%\
+  bin\
+    vdpm.exe              ← native Windows frontend
+    arm-vita-eabi-gcc.exe ← toolchain (on PATH)
+    ...
+  share\vdpm\msys\usr\
+    bin\
+      pacman.exe          ← MSYS-ABI pacman
+      vdpm-channel.exe    ← channel helper
+      msys-2.0.dll        ← MSYS runtime (beside pacman)
+    ssl\certs\ca-bundle.crt
+  share\vdpm\
+    channel-public-key.pem
+    refresh-repositories.ps1
+    list-channels.ps1
+  etc\
+    pacman.conf
+```
+
+The MSYS programs are kept under `share/vdpm/msys/` rather than `usr/bin/` at the SDK root. If `msys-2.0.dll` were placed in `%VITASDK%\bin\` or `%VITASDK%\usr\bin\`, the MSYS runtime would recognize the SDK itself as an MSYS root and apply a built-in mount that maps `/bin` to `/usr/bin`. Any package that installs files into `bin/` — including the entire toolchain front end — would then land in `usr/bin/` instead of `%VITASDK%\bin\`, the directory on `PATH`. Keeping the MSYS tree under `share/vdpm/msys/` avoids this remapping entirely.
+
+---
+
+## Native vdpm.exe
+
+`vdpm.exe` is a native C executable compiled for Windows (`x86_64-w64-mingw32`). It does not link against `msys-2.0.dll`, does not require Bash, and does not shell out through `cmd.exe` for normal operations. It starts pacman and the channel helper directly using `_spawnv`. When arguments contain spaces or special characters, it applies the `CommandLineToArgvW` quoting rules so that both native and MSYS-ABI child processes receive the correct argument boundaries.
+
+All vdpm commands work identically on Windows and Unix:
+
+```powershell
+vdpm install zlib sdl2
+vdpm remove zlib
+vdpm upgrade
+vdpm list
+vdpm search image
+vdpm info sdl2
+vdpm files sdl2
+vdpm refresh nightly
+vdpm channels
+vdpm status
+```
+
+---
+
+## Self-replacement protection
+
+<Note>
+  `vdpm upgrade` on Windows checks whether the `vitasdk-core` package would be
+  replaced by the upgrade. Because `vitasdk-core` includes `vdpm.exe` and
+  `pacman.exe` — the two programs performing the upgrade — Windows cannot
+  overwrite them while they are running. If a core replacement is detected,
+  `vdpm upgrade` refuses with an error and tells you to run the bootstrap script
+  instead:
+
+  ```
+  vdpm: this update replaces the toolchain, which includes vdpm and
+  pacman themselves. Windows cannot overwrite a program while it is
+  running, so run the bootstrap script again instead:
+
+    .\bootstrap-vitasdk.ps1
+
+  Packages you installed are recorded and reinstalled by it.
+  ```
+
+  The check happens **before** the transaction starts, so no partial upgrade is
+  applied. Re-running `bootstrap-vitasdk.ps1` performs a clean reinstall while
+  preserving your installed package list.
+</Note>
+
+---
+
+## Overriding the PowerShell path
+
+If PowerShell is installed in a non-standard location, set `VDPM_POWERSHELL` to its full path. The `vdpm refresh` and `vdpm channels` commands on Windows invoke PowerShell to run the channel scripts:
+
+```powershell
+$env:VDPM_POWERSHELL = 'C:\Program Files\PowerShell\7\pwsh.exe'
+vdpm refresh nightly
+```
+
+By default, vdpm uses `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe`.

@@ -1,0 +1,124 @@
+---
+title: "Building vdpm from Source: C Frontend and Channel Helper"
+sidebarTitle: "Overview"
+description: "How to configure and build the vdpm native C frontend and signed-channel helper from source using CMake, including install targets and test options."
+---
+
+The vdpm frontend is a small, portable C program that drives the rootless Pacman client inside the SDK. Building it from source requires only CMake 3.16 or later, a C99-capable compiler, and no external dependencies beyond OpenSSL when the signed-channel helper is included. The superbuild project is named `vdpm-superbuild` and lives at the root of the repository; it coordinates the frontend, the channel helper, and the optional Pacman superbuild through a set of CMake options.
+
+<Note>
+VitaSDK `buildscripts` does **not** rebuild this product. On every supported host it verifies and incorporates an exact published vdpm bundle. Building from source is only necessary when you are modifying the frontend, packaging for a new platform, or running the test suite.
+</Note>
+
+## CMake options
+
+The build is controlled by four `option()` entries and two `CACHE PATH` variables defined in the root `CMakeLists.txt`.
+
+<ParamField path="BUILD_VDPM_FRONTEND" type="bool" default="ON">
+  Compiles `src/vdpm.c` as the native `vdpm` (or `vdpm.exe`) binary and installs it to `bin/`.
+</ParamField>
+
+<ParamField path="BUILD_VDPM_CHANNEL" type="bool" default="ON">
+  Compiles `src/vdpm-channel.c` as the Ed25519 signature-verification helper and installs it to `bin/`. Requires OpenSSL — CMake will fail at configure time if OpenSSL cannot be found. When `BUILD_VDPM_PACKAGE_CLIENT=ON` the channel helper is instead built as a dependent ExternalProject that links against the superbuild's own static OpenSSL, so no system OpenSSL is required in that path.
+</ParamField>
+
+<ParamField path="BUILD_VDPM_PACKAGE_CLIENT" type="bool" default="OFF">
+  Enables the full Pacman superbuild. This downloads and compiles zlib, xz, OpenSSL, libarchive, curl, and Pacman itself, and is described in detail on the [Package Client](/building/package-client) page.
+</ParamField>
+
+<ParamField path="VDPM_OFFLINE" type="bool" default="ON">
+  When `ON`, the Git-backed Pacman source is not re-fetched on subsequent builds (`UPDATE_DISCONNECTED TRUE` is forwarded to `ExternalProject_Add`). Set to `OFF` only when you need to pull a new upstream Pacman revision.
+</ParamField>
+
+<ParamField path="VDPM_DOWNLOAD_DIR" type="path" default="${CMAKE_BINARY_DIR}/downloads">
+  Directory where source archives for the package-client superbuild are cached. Overriding this is useful in CI to share a download cache across build legs.
+</ParamField>
+
+<ParamField path="VDPM_PACKAGE_CLIENT_INSTALL_PREFIX" type="path" default="${CMAKE_INSTALL_PREFIX}">
+  Install prefix used by Pacman, `pacman-conf`, and the channel helper when built through the package-client superbuild. Independent from `CMAKE_INSTALL_PREFIX` so the Pacman tree can land in a separate staging directory.
+</ParamField>
+
+## Building the frontend
+
+The minimal build compiles `vdpm` and `vdpm-channel` against a system OpenSSL and installs them. No additional options are needed because both targets are on by default.
+
+<Steps>
+
+### Configure
+
+```bash
+cmake -S . -B build
+```
+
+Both `BUILD_VDPM_FRONTEND` and `BUILD_VDPM_CHANNEL` are `ON` by default. CMake will locate OpenSSL with `find_package(OpenSSL REQUIRED)` and also resolves `Threads` (required by static libcrypto on FreeBSD). If OpenSSL is not available and you only need the frontend binary, pass `-DBUILD_VDPM_CHANNEL=OFF`.
+
+### Build
+
+```bash
+cmake --build build --parallel
+```
+
+### Install
+
+```bash
+cmake --install build
+```
+
+</Steps>
+
+To suppress the channel helper and build only the `vdpm` binary:
+
+```bash
+cmake -S . -B build -DBUILD_VDPM_CHANNEL=OFF
+cmake --build build --parallel
+```
+
+## Running the test suite
+
+The CTest suite covers the vdpm contract tests on Unix. Enable it with `-DBUILD_TESTING=ON`:
+
+```bash
+cmake -S . -B build -DBUILD_TESTING=ON
+cmake --build build --parallel
+ctest --test-dir build
+```
+
+The following tests are registered on Unix builds:
+
+| Test name | Script |
+|---|---|
+| `vdpm-frontend-contract` | `tests/test-vdpm.sh` |
+| `vdpm-channel-manifest-contract` | `tests/test-channel-manifest.sh` |
+| `vdpm-release-bundle-contract` | `tests/test-release-bundle.sh` |
+| `vdpm-release-banner` | `tests/test-channel-status.sh` |
+| `vdpm-channel-names` | `tests/test-channel-names.sh` |
+| `vdpm-bootstrap-contract` | `tests/test-bootstrap.sh` |
+| `vdpm-host-triplet-contract` | `tests/test-host-triplet.sh` |
+| `vdpm-refresh-worlds` | `tests/test-refresh-worlds.sh` |
+| `vdpm-channel-worlds-listing` | `tests/test-channel-worlds-listing.sh` |
+| `vdpm-series-autoselection` | `tests/test-series-autoselection.sh` |
+
+Tests that are skippable in constrained environments return exit code `77` as their skip code (set via `SKIP_RETURN_CODE`).
+
+## Install targets
+
+A successful `cmake --install build` places the following files under `CMAKE_INSTALL_PREFIX`:
+
+| Installed path | Source |
+|---|---|
+| `bin/vdpm` | Compiled from `src/vdpm.c` |
+| `bin/vdpm-channel` | Compiled from `src/vdpm-channel.c` (Unix/macOS) |
+| `share/vdpm/licenses/vdpm-LGPL-2.1.txt` | `LICENSE` |
+| `share/vdpm/THIRD_PARTY_NOTICES.md` | `THIRD_PARTY_NOTICES.md` |
+| `share/vdpm/bootstrap-vitasdk.sh` | `bootstrap-vitasdk.sh` |
+| `share/vdpm/bootstrap-vitasdk.ps1` | `bootstrap-vitasdk.ps1` |
+| `share/vdpm/channel-public-key.pem` | `share/vdpm/channel-public-key.pem` |
+| `share/vdpm/refresh-repositories.ps1` | `include/refresh-repositories.ps1` |
+| `share/vdpm/list-channels.ps1` | `include/list-channels.ps1` |
+| `bin/include/*.sh` *(Unix only)* | All `.sh` files under `include/` |
+
+## OpenSSL requirement for `vdpm-channel`
+
+`vdpm-channel` performs Ed25519 signature verification of the channel manifest using `OpenSSL::Crypto`. When building without the package-client superbuild, CMake resolves OpenSSL from the host system via `find_package(OpenSSL REQUIRED)`. On FreeBSD, static libcrypto also requires `Threads` (`pthread_create`), which is resolved separately via `find_package(Threads REQUIRED)`.
+
+If `BUILD_VDPM_PACKAGE_CLIENT=ON`, the channel helper is compiled as a dependent `ExternalProject` that links against the private static OpenSSL the superbuild produces, so no system OpenSSL is consulted for that build target.

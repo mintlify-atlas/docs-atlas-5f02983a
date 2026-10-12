@@ -1,20 +1,99 @@
 ---
-title: "Introduction"
-description: "Welcome to your project"
+title: "vdpm: VitaSDK Package Manager"
+sidebarTitle: "Home"
+description: "vdpm is the cross-platform package manager for VitaSDK, the PlayStation Vita homebrew development toolkit. Install, upgrade, and manage SDK libraries with a single command."
 ---
 
-Write a short description of your product here. What it does, who it's for, and what they can accomplish with it.
+vdpm is the official package manager for [VitaSDK](https://vitasdk.org), the open-source toolchain for PlayStation Vita homebrew development. It provides a safe, verified way to install and manage the SDK itself and the library packages your projects depend on — across Linux, macOS, FreeBSD, and Windows — without requiring root access.
 
-<Tip>
-  Ready to make this your own? Start by editing this page. Update your `docs.json` file to customize your site. Then fill out the [Quickstart](/quickstart) page.
-</Tip>
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Bootstrap VitaSDK from scratch with a single command on any supported platform.
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Install your first packages and get a project building in minutes.
+  </Card>
+  <Card title="Command Reference" icon="terminal" href="/commands/install">
+    Full reference for every vdpm command, flag, and option.
+  </Card>
+  <Card title="Channel Security" icon="shield-check" href="/guides/channel-security">
+    How Ed25519 signatures and SHA-256 hashes keep every install verified.
+  </Card>
+</CardGroup>
 
-<Card title="Quickstart" icon="rocket" href="/quickstart">
-  This card links to the quickstart page in your project.
-</Card>
-<Card title="Components" icon="puzzle-piece" href="https://mintlify.com/docs/components">
-  Add cards, callouts, steps, tabs, and more to design and structure your pages.
-</Card>
-<Card title="Settings" icon="gear" href="https://mintlify.com/docs/organize/settings">
-  Set your site name, branding, and navigation in the `docs.json` file.
-</Card>
+## What vdpm does
+
+vdpm sits in front of a rootless [pacman](https://archlinux.org/pacman/) client embedded in the SDK. All package state lives entirely below `$VITASDK` — the host system's package database and `/usr` are never touched. This design means multiple SDK installations can coexist on the same machine and CI runners never need elevated privileges.
+
+```bash
+# Install one or more packages
+vdpm install zlib sdl2
+
+# Upgrade all installed packages
+vdpm upgrade
+
+# Switch to the nightly release series
+vdpm refresh nightly
+
+# Check which SDK version is active
+vdpm status
+```
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Signed Channel Manifests" icon="key">
+    Every channel manifest is verified against an Ed25519 public key before any package database is written to disk.
+  </Card>
+  <Card title="Cross-Platform" icon="globe">
+    Native binaries for Linux (glibc and musl), macOS (arm64 and x86_64), FreeBSD, and Windows x86_64.
+  </Card>
+  <Card title="Atomic Refresh" icon="arrows-rotate">
+    Series selection is staged and only committed after the toolchain transaction succeeds — a failed refresh leaves your existing SDK untouched.
+  </Card>
+  <Card title="No Root Required" icon="lock-open">
+    All package state stays inside `$VITASDK`. Install to any directory you own without `sudo`.
+  </Card>
+  <Card title="Release Channels" icon="code-branch">
+    Track the latest supported series or pin to `nightly` for cutting-edge toolchain builds.
+  </Card>
+  <Card title="Bootstrap from Zero" icon="play">
+    `bootstrap-vitasdk.sh` (and `.ps1` on Windows) installs the full SDK into a fresh directory with integrity checks at every step.
+  </Card>
+</CardGroup>
+
+## Quick install
+
+<Steps>
+  <Step title="Clone the vdpm repository">
+    ```bash
+    git clone https://github.com/vitasdk/vdpm
+    cd vdpm
+    ```
+  </Step>
+  <Step title="Run the bootstrap script">
+    <CodeGroup>
+    ```bash Linux / macOS / FreeBSD
+    ./bootstrap-vitasdk.sh
+    ```
+    ```powershell Windows (PowerShell)
+    .\bootstrap-vitasdk.ps1
+    ```
+    </CodeGroup>
+  </Step>
+  <Step title="Add the SDK to your PATH">
+    ```bash
+    export VITASDK=/usr/local/vitasdk
+    export PATH=$VITASDK/bin:$PATH
+    ```
+  </Step>
+  <Step title="Install packages">
+    ```bash
+    vdpm install zlib sdl2 libpng
+    ```
+  </Step>
+</Steps>
+
+<Note>
+The bootstrap script detects your platform automatically and downloads a signed seed bundle from the latest supported release. See [Installation](/installation) for advanced options including custom install paths and offline installs.
+</Note>

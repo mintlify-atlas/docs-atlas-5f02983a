@@ -1,0 +1,87 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "vdpm",
+  "projectDescription": "vdpm is the VitaSDK package manager — a cross-platform CLI tool for installing, removing, upgrading, and managing SDK packages for PlayStation Vita homebrew development.",
+  "theme": "aspen",
+  "primaryColor": "#0057B8",
+  "lightColor": "#3A82E4",
+  "darkColor": "#003D80",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Command Reference",
+            "pages": [
+              "commands/install",
+              "commands/remove",
+              "commands/upgrade",
+              "commands/refresh",
+              "commands/channels",
+              "commands/status",
+              "commands/search-info-list",
+              "commands/pacman"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/environment-variables",
+              "guides/channel-security",
+              "guides/ci-automation",
+              "guides/windows"
+            ]
+          },
+          {
+            "group": "Building from Source",
+            "pages": [
+              "building/overview",
+              "building/package-client"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Cross-platform SDK package manager (Linux, macOS, FreeBSD, Windows)",
+    "Ed25519-signed channel manifests with SHA-256 verified package databases",
+    "Bootstrap script installs the full VitaSDK toolchain from scratch",
+    "Release series (channels) management with nightly and stable support",
+    "Pacman-backed transaction engine with rootless (non-root) installation",
+    "Native C frontend with no dependency on bash or libalpm on Windows",
+    "Atomic channel refresh: staged manifest committed only after successful transaction",
+    "Automatic host triplet detection for Linux (glibc/musl), macOS, FreeBSD, Windows"
+  ],
+  "publicApiSurface": [
+    "vdpm install [--force] PACKAGE...",
+    "vdpm remove PACKAGE...",
+    "vdpm upgrade [PACKAGE...]",
+    "vdpm list [PACKAGE...]",
+    "vdpm search TERM...",
+    "vdpm info PACKAGE...",
+    "vdpm files PACKAGE...",
+    "vdpm refresh SERIES",
+    "vdpm channels",
+    "vdpm status",
+    "vdpm pacman [--] ARG...",
+    "bootstrap-vitasdk.sh [--install-dir PATH] [--url URL] [--sha256 HEX]",
+    "bootstrap-vitasdk.ps1 [-InstallDirectory PATH] [-Url URL] [-Sha256 HEX]",
+    "VITASDK (env var: SDK root path)",
+    "VITASDK_CHANNEL (env var: release series name)",
+    "VITASDK_BOOTSTRAP_URL (env var: explicit archive URL)",
+    "VITASDK_BOOTSTRAP_SHA256 (env var: archive hash)",
+    "VDPM_NONINTERACTIVE (env var: suppress prompts)",
+    "VDPM_PACMAN (env var: override pacman binary path)",
+    "VDPM_PACMAN_CONF (env var: override pacman.conf path)"
+  ]
+}

@@ -1,0 +1,188 @@
+---
+title: "Installing VitaSDK: Bootstrap Script and All Options"
+sidebarTitle: "Installation"
+description: "Bootstrap VitaSDK on Linux, macOS, FreeBSD, or Windows. Covers automatic install, custom directories, pinned CI archives, and channel selection."
+---
+
+The VitaSDK bootstrap is a single script that takes a host with `git`, `curl` (or `wget`), and internet access, and leaves a fully managed SDK installation that pacman knows about. Because the result is a set of installed packages rather than an unpacked archive, you can upgrade the toolchain, switch release series, and inspect installed files — none of which is possible with a hand-extracted tree.
+
+<Warning>
+  The destination directory must not already exist. The bootstrap refuses to write over an existing installation rather than risk silently corrupting it. If you need to reinstall, remove the old directory first.
+</Warning>
+
+## Automatic bootstrap (recommended)
+
+This path auto-detects your host architecture and libc, downloads the seed bundle from GitHub Releases, verifies the channel public key SHA-256, selects the newest `supported` series from the signed channel index, and installs `vitasdk-core` via pacman.
+
+<Tabs>
+  <Tab title="Linux / macOS / FreeBSD">
+    <Steps>
+      <Step title="Clone the vdpm repository">
+        ```sh
+        git clone https://github.com/vitasdk/vdpm
+        cd vdpm
+        ```
+      </Step>
+
+      <Step title="Run the bootstrap script">
+        ```sh
+        ./bootstrap-vitasdk.sh
+        ```
+
+        The script detects your host triplet (e.g. `x86_64-linux-gnu`, `aarch64-apple-darwin`, `x86_64-unknown-freebsd`), downloads the matching seed bundle, and installs to `/usr/local/vitasdk` by default.
+      </Step>
+
+      <Step title="Set environment variables">
+        The script prints the exact export lines to add to your shell profile at the end of a successful run:
+
+        ```sh
+        export VITASDK=/usr/local/vitasdk
+        export PATH=$VITASDK/bin:$PATH
+        ```
+
+        Add these two lines to your `~/.bashrc`, `~/.zshrc`, or equivalent, then reload your shell.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="Windows">
+    <Steps>
+      <Step title="Clone the vdpm repository">
+        Open PowerShell and run:
+
+        ```powershell
+        git clone https://github.com/vitasdk/vdpm
+        cd vdpm
+        ```
+      </Step>
+
+      <Step title="Run the PowerShell bootstrap script">
+        ```powershell
+        .\bootstrap-vitasdk.ps1
+        ```
+
+        The script installs to `C:\vitasdk` by default. Channel orchestration runs through Windows PowerShell 5.1 — no Bash, MSYS2, or WSL is required.
+      </Step>
+
+      <Step title="Set environment variables">
+        After the script completes, set `VITASDK` to the install directory and prepend `%VITASDK%\bin` to your `PATH`. From PowerShell (current session):
+
+        ```powershell
+        $env:VITASDK = "C:\vitasdk"
+        $env:PATH = "$env:VITASDK\bin;$env:PATH"
+        ```
+
+        For a permanent system-wide change, use **System Properties → Environment Variables**.
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+## Channel public key verification
+
+During an automatic bootstrap, the script verifies that the seed bundle carries the expected channel public key before reading any index. The SHA-256 of the key that authorises every package manifest is:
+
+```
+c02df2e12216f6f633d94206634bbe8f244d74f610b29e922d7ea8bab2efb307
+```
+
+This check catches a seed bundle that ships a different channel key — for example, a stale mirror copy. It cannot catch a tampered seed binary, because the seed is the program that performs all subsequent verification; trust for the seed itself is delegated to GitHub and HTTPS, which is an explicit design decision in the bootstrap.
+
+<Info>
+  From the seed onwards nothing is taken on trust. The channel manifest is verified against the key already on disk, package databases are accepted only if they hash to what the signed manifest specifies, and pacman checks every package against those databases.
+</Info>
+
+## Bootstrap script flags
+
+Both `bootstrap-vitasdk.sh` and `bootstrap-vitasdk.ps1` accept the following options. Shell flags and their environment-variable equivalents are interchangeable.
+
+| Shell flag | PowerShell parameter | Environment variable | Description |
+|---|---|---|---|
+| `--install-dir PATH` | `-InstallDirectory PATH` | `VITASDK` | Destination directory (must not exist) |
+| `--url URL` | `-Url URL` | `VITASDK_BOOTSTRAP_URL` | Explicit archive URL (skips series selection) |
+| `--sha256 HEX` | `-Sha256 HEX` | `VITASDK_BOOTSTRAP_SHA256` | Expected SHA-256 of the archive (64 hex chars) |
+| *(none)* | `-Channel NAME` | `VITASDK_CHANNEL` | Release series to install (e.g. `nightly`) |
+
+## Custom install directory
+
+To install somewhere other than the default (`/usr/local/vitasdk` on Unix, `C:\vitasdk` on Windows), pass a path with `--install-dir` or set the `VITASDK` environment variable before running:
+
+<CodeGroup>
+  ```sh Shell
+  VITASDK=$HOME/vitasdk ./bootstrap-vitasdk.sh
+  # or
+  ./bootstrap-vitasdk.sh --install-dir "$HOME/vitasdk"
+  ```
+
+  ```powershell PowerShell
+  .\bootstrap-vitasdk.ps1 -InstallDirectory "$HOME\vitasdk"
+  # or
+  $env:VITASDK = "$HOME\vitasdk"; .\bootstrap-vitasdk.ps1
+  ```
+</CodeGroup>
+
+The destination must be an absolute, non-root path. The bootstrap stages the SDK in a temporary sibling directory and only moves it into place once all verification passes — a failed bootstrap leaves no partial installation at the requested destination.
+
+## Pinned URL install for reproducible CI
+
+When you need byte-exact reproducibility — for example, to pin a known-good SDK version in a CI pipeline — you can name an exact archive URL and its SHA-256 digest. No series selection is performed; only that archive is fetched and verified:
+
+<CodeGroup>
+  ```sh Shell
+  ./bootstrap-vitasdk.sh \
+    --url 'https://github.com/vitasdk/autobuilds/releases/download/<tag>/<asset>.tar.bz2' \
+    --sha256 '<64 hexadecimal characters>'
+  ```
+
+  ```powershell PowerShell
+  .\bootstrap-vitasdk.ps1 `
+    -Url 'https://github.com/vitasdk/autobuilds/releases/download/<tag>/<asset>.tar.bz2' `
+    -Sha256 '<64 hexadecimal characters>'
+  ```
+</CodeGroup>
+
+<Tip>
+  Every asset published to GitHub Releases has an adjacent `.sha256` sidecar file at `<asset-url>.sha256`. If you omit `--sha256` but provide `--url`, the bootstrap fetches the sidecar automatically and uses its content as the expected digest.
+</Tip>
+
+## Selecting a release channel
+
+By default the bootstrap picks the newest series marked `supported` in the signed channel index. To install a different series — such as `nightly` for the latest builds — set `VITASDK_CHANNEL` before running:
+
+<CodeGroup>
+  ```sh Shell
+  VITASDK_CHANNEL=nightly ./bootstrap-vitasdk.sh
+  ```
+
+  ```powershell PowerShell
+  $env:VITASDK_CHANNEL = "nightly"
+  .\bootstrap-vitasdk.ps1
+  # or
+  .\bootstrap-vitasdk.ps1 -Channel nightly
+  ```
+</CodeGroup>
+
+You can also switch channels on an already-installed SDK at any time with `vdpm refresh`:
+
+```sh
+vdpm refresh nightly
+```
+
+Run `vdpm channels` to see all available series and their current status.
+
+## Post-install verification
+
+Once the environment variables are set, confirm the installation is working:
+
+```sh
+vdpm status
+```
+
+This prints the active release series, the sequence number of the current channel manifest, the installed toolchain version, and the number of installed packages. A healthy output looks like:
+
+```
+Release   2025.04
+Sequence  42
+Toolchain 2025.04-1
+Packages  1
+Installed 2025.04-1
+```

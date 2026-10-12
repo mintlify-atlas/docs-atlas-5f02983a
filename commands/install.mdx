@@ -1,0 +1,80 @@
+---
+title: "Install Packages with vdpm — VitaSDK Package Manager"
+sidebarTitle: "Install"
+description: "Install VitaSDK packages by name. Use --force to reinstall already-current packages. vdpm warns about deprecated packages before the transaction begins."
+---
+
+The `install` command fetches packages from the active sync database and installs them into your SDK root. Before any work begins, vdpm prints a release banner so you always know which VitaSDK series is active. If a package you are installing is flagged as deprecated in the channel manifest, vdpm emits a warning alongside the banner — the install still proceeds, so anything already depending on that package continues to work.
+
+## Usage
+
+```
+vdpm install [--force] PACKAGE...
+```
+
+At least one package name is required. Multiple packages are resolved and installed in a single transaction.
+
+## Options
+
+<ParamField path="--force" type="flag">
+  Reinstall packages even if they are already at their current version. Without
+  this flag, vdpm passes `--needed` to the embedded pacman and skips any package
+  whose installed version already matches the sync database. With `--force`,
+  `--needed` is omitted so pacman unconditionally reinstalls every named package.
+</ParamField>
+
+<ParamField path="PACKAGE..." type="string" required>
+  One or more package names to install from the sync database. Names are matched
+  exactly against package entries in the active channel's repository.
+</ParamField>
+
+## Examples
+
+Install a set of packages in one command:
+
+```bash
+vdpm install zlib sdl2 libpng
+```
+
+Reinstall a package whose files may have been corrupted or manually modified:
+
+```bash
+vdpm install --force sdl2
+```
+
+## Release banner
+
+Every install prints the active series and sequence number to stderr before the transaction starts, for example:
+
+```
+:: VitaSDK 2024.11 (sequence 42)
+```
+
+If the installed series is `end-of-life` or `deprecated`, an additional notice appears immediately after the banner. The transaction is not blocked — the warning is informational.
+
+## Deprecated package warnings
+
+When a package name you supply on the command line is listed as deprecated in the channel manifest, vdpm prints a per-package message:
+
+```
+:: libfoo is deprecated: use libfoo2 instead
+```
+
+The install still completes. The warning is per-name, so it appears next to the package being requested rather than in a summary nobody reads.
+
+## Compatibility aliases
+
+The following legacy forms are accepted and behave identically to their `install` equivalents:
+
+| Alias | Equivalent |
+|---|---|
+| `vdpm PACKAGE...` | `vdpm install PACKAGE...` |
+| `vdpm -f PACKAGE...` | `vdpm install --force PACKAGE...` |
+
+## Non-interactive mode
+
+<Note>
+  Setting `VDPM_NONINTERACTIVE=1` before running vdpm passes `--noconfirm` and
+  `--noprogressbar` to pacman. This suppresses all confirmation prompts and
+  progress output, which is useful in CI pipelines and bootstrap scripts.
+</Note>

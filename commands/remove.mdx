@@ -1,0 +1,63 @@
+---
+title: "Remove Installed Packages from VitaSDK with vdpm"
+sidebarTitle: "Remove"
+description: "Uninstall one or more packages from your VitaSDK prefix. vdpm remove passes --remove to the embedded pacman and requires at least one name."
+---
+
+The `remove` command uninstalls packages from your SDK root by delegating to the embedded pacman with the `--remove` flag. Like all transaction commands, it prints the active release banner before any work begins, and it respects `VDPM_NONINTERACTIVE` to suppress confirmation prompts in automated environments.
+
+## Usage
+
+```
+vdpm remove PACKAGE...
+```
+
+At least one package name is required. Attempting to run `vdpm remove` with no arguments exits with an error.
+
+## Options
+
+<ParamField path="PACKAGE..." type="string" required>
+  One or more installed package names to remove. Each name is passed directly to
+  pacman's `--remove` operation, which handles dependency tracking according to
+  the local database.
+</ParamField>
+
+## Examples
+
+Remove a single package:
+
+```bash
+vdpm remove zlib
+```
+
+Remove multiple packages in one transaction:
+
+```bash
+vdpm remove sdl2 libpng libjpeg
+```
+
+## Compatibility alias
+
+The short flag `-u` is accepted for compatibility and behaves identically to `vdpm remove`:
+
+| Alias | Equivalent |
+|---|---|
+| `vdpm -u PACKAGE...` | `vdpm remove PACKAGE...` |
+
+## Non-interactive mode
+
+<Note>
+  Set `VDPM_NONINTERACTIVE=1` to pass `--noconfirm` and `--noprogressbar` to
+  pacman, suppressing all prompts. This is the recommended setting for scripts
+  and CI pipelines.
+</Note>
+
+## Release banner
+
+The release banner is printed to stderr before the remove transaction runs:
+
+```
+:: VitaSDK 2024.11 (sequence 42)
+```
+
+If the active series is `end-of-life` or `deprecated`, an additional notice follows the banner.

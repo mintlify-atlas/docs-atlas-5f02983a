@@ -1,0 +1,204 @@
+---
+title: "vdpm Environment Variables and Default Values Reference"
+sidebarTitle: "Environment Vars"
+description: "Every environment variable that vdpm, the bootstrap scripts, and the channel refresh tooling read, with default values and usage notes."
+---
+
+vdpm reads its configuration entirely from environment variables and command-line flags — there is no separate config file. The variables below are grouped by when they are read: at runtime by the `vdpm` front end, during bootstrap, during channel refresh, and for Windows-specific overrides. All SDK state — packages, databases, logs, and channel manifests — lives beneath `$VITASDK`.
+
+---
+
+## Runtime variable
+
+<ParamField path="VITASDK" type="string" required>
+  Absolute path to the SDK root. Every `vdpm` command reads this first; the
+  process exits immediately if it is unset, empty, relative, or equal to `/`.
+  All package state — the pacman database, the package cache, the channel
+  manifest, and the log file — is stored inside this directory. The bootstrap
+  script prints the correct export line at the end of a successful install:
+
+  ```bash
+  export VITASDK=/usr/local/vitasdk
+  export PATH=$VITASDK/bin:$PATH
+  ```
+
+  On Windows the value may be a drive-letter path (`C:\vitasdk`) or a UNC path.
+  Backslashes and forward slashes are both accepted and normalized internally.
+</ParamField>
+
+---
+
+## Bootstrap-time variables
+
+These variables are read by `bootstrap-vitasdk.sh` and `bootstrap-vitasdk.ps1`. They correspond exactly to the command-line flags of the same scripts; setting a variable is equivalent to passing the matching flag.
+
+<ParamField path="VITASDK_BOOTSTRAP_URL" type="string">
+  Explicit HTTPS URL of the SDK archive to download and install. When set
+  alongside `VITASDK_BOOTSTRAP_SHA256`, the bootstrap skips automatic seed
+  resolution and installs exactly the named archive. Equivalent to passing
+  `--url` on the command line.
+
+  ```bash
+  VITASDK_BOOTSTRAP_URL='https://github.com/vitasdk/autobuilds/releases/download/<tag>/<asset>'
+  VITASDK_BOOTSTRAP_SHA256='<64 hex characters>'
+  ./bootstrap-vitasdk.sh
+  ```
+</ParamField>
+
+<ParamField path="VITASDK_BOOTSTRAP_SHA256" type="string">
+  SHA-256 hex digest of the bootstrap archive (exactly 64 lowercase hex
+  characters; uppercase is accepted and normalized). The bootstrap verifies the
+  downloaded or copied archive against this value before extracting anything. It
+  is required whenever `VITASDK_BOOTSTRAP_URL` or `VITASDK_BOOTSTRAP_ARCHIVE`
+  is set; the bootstrap fails immediately if the digest does not match.
+
+  If a `.sha256` sidecar file exists beside the archive (for example,
+  `vitasdk.tar.bz2.sha256`), the bootstrap reads the digest from it
+  automatically when this variable is not set.
+</ParamField>
+
+<ParamField path="VITASDK_BOOTSTRAP_ARCHIVE" type="string">
+  Path to a local archive file for offline or air-gapped installation. The
+  bootstrap copies it to a temporary directory and verifies its SHA-256 exactly
+  as it would a downloaded archive. `VITASDK_BOOTSTRAP_SHA256` (or a `.sha256`
+  sidecar) is still required. The archive must be a regular file, not a
+  symbolic link.
+
+  ```bash
+  VITASDK_BOOTSTRAP_ARCHIVE=/mnt/media/vitasdk.tar.bz2 \
+  VITASDK_BOOTSTRAP_SHA256='<64 hex characters>' \
+  ./bootstrap-vitasdk.sh --install-dir /opt/vitasdk
+  ```
+</ParamField>
+
+<ParamField path="VITASDK_CHANNEL" type="string">
+  Release series to install, for example `nightly` or `2026.09`. When this
+  variable is not set and no explicit archive URL is given, the bootstrap
+  downloads and verifies the signed channel index and selects the newest series
+  marked `supported` for the default world (`vita`). Setting this variable
+  overrides that selection. Equivalent to the `-Channel` parameter in
+  `bootstrap-vitasdk.ps1`.
+
+  <Note>
+    Setting `VITASDK_CHANNEL=stable` is treated the same as leaving it unset:
+    `stable` is not a valid series name and the bootstrap falls through to
+    automatic selection.
+  </Note>
+</ParamField>
+
+<ParamField path="VITASDK_SEED_ARCHIVE" type="string">
+  Path to a locally built seed bundle. This is used by the release pipeline to
+  test a new bundle before it is published to GitHub. When set, the bootstrap
+  uses this archive as the client seed instead of downloading one from the
+  pinned release. `VITASDK_SEED_SHA256` or a `.sha256` sidecar is required
+  alongside it.
+</ParamField>
+
+<ParamField path="VITASDK_SEED_SHA256" type="string">
+  SHA-256 hex digest of the seed archive pointed to by `VITASDK_SEED_ARCHIVE`.
+  Follows the same 64-character hex rules as `VITASDK_BOOTSTRAP_SHA256`.
+</ParamField>
+
+---
+
+## Channel and refresh variables
+
+These variables are read during `vdpm refresh` by `include/refresh-repositories.sh` (Unix) and `refresh-repositories.ps1` (Windows), and during `vdpm channels` by `include/list-channels.sh`.
+
+<ParamField path="VITASDK_CHANNEL_BASE_URL" type="string" default="https://vitasdk.org/channels">
+  Base URL from which channel manifests (`<series>.json` and
+  `<series>.json.sig`) and the release index (`index.json` and
+  `index.json.sig`) are downloaded. Override this to point at a mirror or a
+  local HTTP server during testing.
+
+  ```bash
+  VITASDK_CHANNEL_BASE_URL=https://mirror.example.com/vitasdk/channels \
+  vdpm refresh nightly
+  ```
+</ParamField>
+
+<ParamField path="VITASDK_CHANNEL_PUBLIC_KEY" type="string" default="$VITASDK/share/vdpm/channel-public-key.pem">
+  Path to the Ed25519 public key used to verify channel manifests and the
+  release index. The default is the key installed with the SDK at
+  `$VITASDK/share/vdpm/channel-public-key.pem`. Override this only in
+  controlled test environments; changing the key in production defeats the
+  integrity guarantee the refresh provides.
+</ParamField>
+
+<ParamField path="VITASDK_CHANNEL_MANIFEST" type="string">
+  Path to a local manifest file. When set, `vdpm refresh` reads the manifest
+  from this path instead of downloading it from `VITASDK_CHANNEL_BASE_URL`. A
+  corresponding `.sig` file must exist at the same path with `.sig` appended.
+  Signature verification still runs against `VITASDK_CHANNEL_PUBLIC_KEY`. This
+  variable is intended for offline testing and CI pipelines that pre-stage
+  manifests.
+</ParamField>
+
+<ParamField path="VITASDK_CHANNEL_ASSET_DIRECTORY" type="string">
+  Directory containing pre-downloaded pacman database files. When set, the
+  channel refresh reads database files from this directory instead of
+  downloading them. The files must be regular files (not symbolic links) and
+  their SHA-256 hashes are verified against the values in the channel manifest
+  before they are written to `$VITASDK/var/lib/pacman/sync/`. Use this for
+  fully offline refreshes in air-gapped environments.
+</ParamField>
+
+---
+
+## Runtime overrides
+
+<ParamField path="VDPM_PACMAN" type="string">
+  Path to the pacman binary. When not set, vdpm uses:
+
+  - **Unix**: `$VITASDK/libexec/vdpm/pacman`
+  - **Windows**: `$VITASDK\share\vdpm\msys\usr\bin\pacman.exe`
+
+  The Unix binary is kept off `PATH` so that a Linux distribution's own pacman
+  remains reachable as plain `pacman`. The Windows binary lives under
+  `share/vdpm/msys/` to keep `msys-2.0.dll` away from the SDK's own `bin/`
+  directory, which prevents MSYS from remapping the SDK root to `/`.
+</ParamField>
+
+<ParamField path="VDPM_PACMAN_CONF" type="string" default="$VITASDK/etc/pacman.conf">
+  Path to the `pacman.conf` configuration file. The default is written by
+  `vdpm refresh` and contains the repository URLs, architecture, and world for
+  the selected series. Override this only for debugging; the configuration is
+  tightly coupled to the installed series.
+</ParamField>
+
+<ParamField path="VDPM_NONINTERACTIVE" type="string">
+  Set to `1` to pass `--noconfirm --noprogressbar` to every pacman transaction
+  (`install`, `remove`, `upgrade`, `refresh`). This suppresses all interactive
+  prompts and progress output, which is required for CI pipelines and
+  non-terminal environments.
+
+  ```bash
+  VDPM_NONINTERACTIVE=1 vdpm install zlib sdl2 libpng
+  ```
+</ParamField>
+
+<ParamField path="VDPM_CHANNEL_TOOL" type="string">
+  Path to the `vdpm-channel` helper binary. When not set, vdpm locates it
+  relative to its own installation:
+
+  - **Unix**: `$VITASDK/bin/vdpm-channel`
+  - **Windows**: `$VITASDK\share\vdpm\msys\usr\bin\vdpm-channel.exe`
+
+  `vdpm-channel` performs all Ed25519 verification, manifest parsing, SHA-256
+  checks, and release-index queries. Overriding this path is useful when
+  testing a new build of the channel tool before installing it.
+</ParamField>
+
+<ParamField path="VDPM_POWERSHELL" type="string">
+  **Windows only.** Path to the `powershell.exe` binary. When not set, vdpm
+  uses `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe`. The
+  `vdpm refresh` and `vdpm channels` commands on Windows invoke PowerShell to
+  run the channel scripts; this variable lets you override the path if
+  PowerShell is installed in a non-standard location.
+</ParamField>
+
+<ParamField path="VDPM_REFRESH_TOOL" type="string">
+  **Windows only.** Path to `refresh-repositories.ps1`. When not set, vdpm
+  resolves it relative to `$VITASDK\share\vdpm\`. Override this to test a
+  modified refresh script without replacing the installed copy.
+</ParamField>

@@ -1,0 +1,129 @@
+---
+title: "Switch VitaSDK Release Series with vdpm refresh"
+sidebarTitle: "Refresh"
+description: "Switch your VitaSDK installation to a named release series. Verifies a signed channel manifest, hashes the databases, and runs the toolchain transaction."
+---
+
+The `refresh` command moves your VitaSDK installation onto a named release series. It downloads the channel manifest and package databases, verifies every file cryptographically, rewrites `pacman.conf` to point at the new repositories, and then runs the transaction that actually replaces the toolchain. The series name is committed only after that transaction succeeds, so an interrupted refresh never leaves your installation claiming one series while running another one's toolchain.
+
+## Usage
+
+```
+vdpm refresh SERIES
+```
+
+There is no default series. You must supply one explicitly. Run `vdpm channels` to see the names of all available series before refreshing.
+
+## Options
+
+<ParamField path="SERIES" type="string" required>
+  The release series name to switch to, for example `nightly` or `2024.11`.
+  Names are validated against the pattern `[A-Za-z0-9][A-Za-z0-9._-]*` and must
+  not contain `..`.
+</ParamField>
+
+## The refresh pipeline
+
+<Steps>
+  <Step title="Download the channel manifest">
+    vdpm fetches `$base/$channel.json` and its Ed25519 detached signature
+    `$base/$channel.json.sig` from `https://vitasdk.org/channels` (overridable
+    with `VITASDK_CHANNEL_BASE_URL`).
+  </Step>
+  <Step title="Verify the signature">
+    The signature is checked against `$VITASDK/share/vdpm/channel-public-key.pem`
+    before the manifest is read. No untrusted structure is parsed until this
+    step passes.
+  </Step>
+  <Step title="Validate the manifest">
+    The manifest is validated for the requested channel name and the current host
+    triplet (e.g. `x86_64-linux-gnu`). Validation fails if the manifest does not
+    describe a release for this host.
+  </Step>
+  <Step title="Download the package databases">
+    The core toolchain database and the packages database are downloaded using
+    the URLs recorded in the verified manifest.
+  </Step>
+  <Step title="Verify database hashes">
+    Each downloaded database is checked against the SHA-256 hash recorded in the
+    signed manifest. A mismatch aborts the refresh before any file is written to
+    your SDK root.
+  </Step>
+  <Step title="Write a new pacman.conf">
+    A new `$VITASDK/etc/pacman.conf` is written with the correct server URLs,
+    architecture, and world values for the target series. The existing
+    configuration is replaced atomically.
+  </Step>
+  <Step title="Install the verified databases">
+    The verified database files are copied into
+    `$VITASDK/var/lib/pacman/sync/`, replacing any previously installed ones.
+  </Step>
+  <Step title="Stage the channel manifest">
+    The verified `channel.json` is written to
+    `$VITASDK/var/lib/vdpm/channel.json.staged`. It is not committed yet —
+    staging happens before the transaction so the installation remains on the
+    old series until the toolchain replacement succeeds.
+  </Step>
+  <Step title="Run the toolchain transaction">
+    vdpm passes `--sync --sysupgrade --sysupgrade` (double `--sysupgrade`) to
+    pacman. The double flag is required because moving series is not a normal
+    upgrade: the incoming toolchain version is often older than the one
+    installed, and a single `--sysupgrade` would skip it.
+  </Step>
+  <Step title="Commit the staged manifest">
+    Only after the transaction exits successfully does vdpm rename
+    `channel.json.staged` to `channel.json`, making the new series the
+    recorded one.
+  </Step>
+</Steps>
+
+## Example
+
+Switch to the rolling nightly series:
+
+```bash
+vdpm refresh nightly
+```
+
+Switch to a dated stable release:
+
+```bash
+vdpm refresh 2024.11
+```
+
+After a successful refresh, vdpm prints:
+
+```
+refreshed 2024.11 channel sequence 42
+```
+
+## World mismatch
+
+<Warning>
+  Each channel manifest carries a `world` value that identifies the ABI the
+  packages target. If the new channel's world differs from the world recorded in
+  your current `pacman.conf`, vdpm refuses the refresh:
+
+  ```
+  this installation is vita and channel 2026.01 is vita2
+  changing world needs a new VITASDK root, not a refresh
+  ```
+
+  Moving to a different world requires creating a fresh `$VITASDK` root and
+  running the bootstrap for that world. A refresh is not the right tool for
+  this because the installed sysroot files and the incoming package database
+  describe incompatible ABIs.
+</Warning>
+
+## Database lock
+
+If `$VITASDK/var/lib/pacman/db.lck` exists when `refresh` runs, the command stops immediately:
+
+```
+the package database is locked, so the repositories were not touched
+another vdpm or pacman may be running; if none is, an interrupted one
+left the lock behind and it is safe to remove:
+  rm $VITASDK/var/lib/pacman/db.lck
+```
+
+Remove the lock file only after confirming that no other vdpm or pacman process is running against the same SDK root.

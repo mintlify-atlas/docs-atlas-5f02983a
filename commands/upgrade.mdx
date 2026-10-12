@@ -1,0 +1,80 @@
+---
+title: "Upgrade VitaSDK Packages to Their Latest Versions"
+sidebarTitle: "Upgrade"
+description: "Upgrade all installed VitaSDK packages or a named subset. On Windows, refuses if vitasdk-core would be replaced and redirects you to bootstrap-vitasdk.ps1."
+---
+
+The `upgrade` command brings installed packages up to the versions in the active sync database. Called with no arguments it performs a full system upgrade; called with package names it upgrades only those packages. The release banner is printed before any transaction begins, so the active series is always visible even if the upgrade fails partway through.
+
+## Usage
+
+```
+vdpm upgrade [PACKAGE...]
+```
+
+## Behavior
+
+When invoked **without** package names, vdpm passes `--sync --sysupgrade` to the embedded pacman, upgrading every installed package that has a newer version available in the sync database.
+
+When invoked **with** one or more package names, vdpm passes `--sync` together with those names, upgrading only the listed packages without performing a full system upgrade.
+
+## Options
+
+<ParamField path="PACKAGE..." type="string">
+  Optional. One or more package names to upgrade selectively. Omit entirely for
+  a full system upgrade.
+</ParamField>
+
+## Examples
+
+Upgrade everything:
+
+```bash
+vdpm upgrade
+```
+
+Upgrade specific packages only:
+
+```bash
+vdpm upgrade sdl2 zlib
+```
+
+## Windows: self-replacement protection
+
+<Warning>
+  On Windows, vdpm checks whether a full upgrade would replace `vitasdk-core`
+  before the transaction begins. The core package carries both `vdpm.exe` and
+  `pacman.exe`, and Windows cannot overwrite a running executable. If
+  `vitasdk-core` is among the pending upgrades, vdpm refuses the transaction
+  and prints:
+
+  ```
+  vdpm: this update replaces the toolchain, which includes vdpm and
+  pacman themselves. Windows cannot overwrite a program while it is
+  running, so run the bootstrap script again instead:
+
+    .\bootstrap-vitasdk.ps1
+
+  Packages you installed are recorded and reinstalled by it.
+  ```
+
+  Run `bootstrap-vitasdk.ps1` from PowerShell to complete the toolchain upgrade
+  safely. The bootstrap script preserves your previously installed packages.
+</Warning>
+
+## Non-interactive mode
+
+<Note>
+  Setting `VDPM_NONINTERACTIVE=1` passes `--noconfirm` and `--noprogressbar` to
+  pacman, suppressing all prompts. Recommended for CI pipelines and scripts.
+</Note>
+
+## Release banner
+
+The active series and sequence number are printed to stderr immediately before the upgrade transaction:
+
+```
+:: VitaSDK 2024.11 (sequence 42)
+```
+
+If the series is `end-of-life` or `deprecated`, a follow-up notice is printed. The transaction is not blocked.

@@ -1,0 +1,78 @@
+---
+title: "vdpm: Rootless, Cross-Platform SDK Package Manager"
+sidebarTitle: "Introduction"
+description: "vdpm is the official package manager for VitaSDK, providing rootless, cross-platform lifecycle management for PS Vita homebrew SDK packages."
+---
+
+vdpm is VitaSDK's package manager frontend — a portable, native CLI tool that wraps the rootless pacman client installed inside the SDK. All package state lives entirely beneath `$VITASDK`; the host package database and system directories like `/usr` are never touched. This design means you can install, upgrade, and remove SDK packages without administrator privileges on any supported platform.
+
+## What problem vdpm solves
+
+Developing PS Vita homebrew requires a cross-compilation toolchain, a set of target libraries, and a reliable way to keep them in sync across different developer machines and CI environments. Before vdpm, the only options were fragile hand-managed archives or legacy scripts that could not answer questions like "which release is this SDK?" or "can I move it to a newer series?" vdpm makes the entire SDK installation a set of packages that pacman knows about, so `vdpm upgrade` can update the toolchain, `vdpm refresh` can move it between release series, and `vdpm status` can always say exactly which one is active.
+
+## Key concepts
+
+**Channels and series** — A channel is a named release series such as `2025.04` or `nightly`. The signed channel index at `https://vitasdk.org/channels` lists all available series and marks the ones that are still `supported`. The bootstrap automatically selects the newest supported series so you never have to name one to get started.
+
+**The bootstrap process** — Installing VitaSDK is a two-step operation: the bootstrap downloads a small seed bundle (the vdpm client plus a rootless pacman binary), verifies the channel public key it carries, selects a series from the signed index, and then uses pacman to install `vitasdk-core` from the verified package databases. The result is an installation that pacman fully understands and can later upgrade or move between series.
+
+**Ed25519-signed manifests** — Every channel manifest is signed with an Ed25519 private key; the corresponding public key is stored at `$VITASDK/share/vdpm/channel-public-key.pem` and installed into every SDK. The `vdpm-channel` helper verifies the signature before parsing anything. A manifest whose signature does not verify is never written to pacman's sync directory — refresh fails closed, not open.
+
+**Rootless pacman** — vdpm ships its own copy of pacman, kept off the host `PATH` (at `libexec/vdpm/pacman` on Unix, `share/vdpm/msys/usr/bin/pacman.exe` on Windows). Every operation scopes the database, cache, and root to `$VITASDK`, so nothing touches the host system's package state.
+
+## Supported platforms
+
+vdpm ships pre-built native binaries for every platform in the table below. All bundles are produced by reproducible CI builds and verified byte-for-byte before publication.
+
+| Platform | Architectures |
+|---|---|
+| Linux glibc (≥ 2.31) | x86\_64, aarch64 |
+| Linux musl | x86\_64, aarch64 |
+| macOS | arm64 (Apple Silicon), x86\_64 |
+| FreeBSD | x86\_64, aarch64 |
+| Windows | x86\_64 |
+
+On Windows, vdpm builds as a native `vdpm.exe` and starts the MSYS-ABI Pacman executable directly. Channel orchestration uses Windows PowerShell 5.1, which ships with all supported Windows versions. No Bash, MSYS2, or WSL installation is required.
+
+## Command overview
+
+```sh
+vdpm install zlib sdl2
+vdpm remove zlib
+vdpm upgrade
+vdpm list
+vdpm search image
+vdpm info sdl2
+vdpm files sdl2
+vdpm refresh nightly
+vdpm channels
+vdpm status
+vdpm pacman -- --database --check
+```
+
+### Legacy compatibility forms
+
+The historical short-hand forms from the original vdpm remain available during migration. They map directly to their modern equivalents:
+
+| Legacy form | Equivalent |
+|---|---|
+| `vdpm PACKAGE...` | `vdpm install PACKAGE...` |
+| `vdpm -f PACKAGE...` | `vdpm install --force PACKAGE...` (reinstall) |
+| `vdpm -u PACKAGE...` | `vdpm remove PACKAGE...` |
+
+## Where to go next
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Bootstrap a fresh VitaSDK installation on Linux, macOS, FreeBSD, or Windows using the automatic or reproducible-CI install path.
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Install your first packages, search the repository, and run your first upgrade in under five minutes.
+  </Card>
+  <Card title="Command Reference" icon="terminal" href="/commands/install">
+    Full reference for every vdpm subcommand, flag, and environment variable.
+  </Card>
+  <Card title="Channel Security" icon="shield-check" href="/guides/channel-security">
+    How Ed25519 signatures, SHA-256 database hashes, and the channel public key work together to protect every package transaction.
+  </Card>
+</CardGroup>

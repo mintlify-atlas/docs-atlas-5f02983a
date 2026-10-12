@@ -1,0 +1,184 @@
+---
+title: "Building the vdpm Pacman Package Client from Source"
+sidebarTitle: "Package Client"
+description: "Build the pinned, patched Pacman binary bundled with vdpm: CMake superbuild, supported host platforms, Windows MSYS path, and reproducible release bundles."
+---
+
+The vdpm package client is a pinned, statically linked build of Pacman and its private dependencies — zlib, xz, OpenSSL, libarchive, and curl — compiled with a series of custom patches that enable rootless installs, static libalpm linking, Windows (MinGW) support, and locale-free operation. End users receive a pre-built, host-specific bundle and never need to run this build themselves; it is documented here for contributors, platform porters, and anyone reproducing the published release artifacts.
+
+<Note>
+If you are setting up the VitaSDK on your machine, run `bootstrap-vitasdk.sh` (or `bootstrap-vitasdk.ps1` on Windows) instead. The bootstrap downloads and installs the correct pre-built bundle for your host automatically. Building the package client from source is only necessary when developing vdpm itself or porting it to a new platform.
+</Note>
+
+## What gets built
+
+Enabling `BUILD_VDPM_PACKAGE_CLIENT=ON` activates the `vdpm_add_package_client` function defined in `cmake/PackageClient.cmake`. That function registers a chain of `ExternalProject_Add` targets that download, verify, and build the following components as static libraries, then links Pacman against them:
+
+| Component | Pinned version | Used for |
+|---|---|---|
+| zlib | 1.3.1 | Compression in libarchive |
+| xz / liblzma | 5.8.3 | `.pkg.tar.xz` decompression |
+| OpenSSL | 3.5.7 | TLS in curl, Ed25519 in `vdpm-channel` |
+| libarchive | 3.8.9 | Package archive extraction |
+| curl | 8.21.0 | HTTPS downloads in Pacman |
+| Pacman | 7.1.0 (`v7.1.0`) | Package management |
+
+All versions and SHA-256 hashes are defined in `cmake/PackageClientVersions.cmake` and are pinned for reproducibility. The build also requires CMake 3.20 or later (the superbuild path enforces this with a `FATAL_ERROR` if an older version is detected) as well as `meson` and `make` (or `gmake`) on the host.
+
+## Patches applied to Pacman
+
+Five patches are applied in order from `patches/pacman/` before the Meson configure step. Each patch is applied with `git apply` and verified for a clean whitespace application.
+
+| Patch file | Effect |
+|---|---|
+| `0001-allow-writable-non-root-installation-roots.patch` | Allows Pacman to operate on installation roots not owned by root, enabling the VitaSDK's rootless install model |
+| `0002-embed-libalpm-in-static-clients.patch` | Statically links libalpm into the `pacman` and `pacman-conf` executables so no shared library is needed at runtime |
+| `0003-build-libalpm-with-mingw.patch` | Enables compilation under MinGW for the Windows build |
+| `0004-initialize-locale-without-i18n.patch` | Removes the dependency on locale infrastructure; Pacman is built with `-Di18n=false` |
+| `0005-reject-windows-casefold-collisions.patch` | Guards against silent file-overwrite collisions on case-insensitive Windows filesystems |
+
+## Building on Linux and macOS
+
+<Steps>
+
+### Verify prerequisites
+
+The package-client superbuild requires CMake 3.20+, `meson`, `ninja`, `pkg-config`, and `make` (or `gmake`). On macOS, install these with Homebrew:
+
+```bash
+brew install cmake meson ninja pkg-config
+```
+
+On Ubuntu/Debian:
+
+```bash
+sudo apt-get install cmake meson ninja-build pkg-config
+```
+
+### Configure with the package-client superbuild
+
+Pass `-DBUILD_VDPM_PACKAGE_CLIENT=ON` and set `VDPM_PACKAGE_CLIENT_INSTALL_PREFIX` to a staging directory so the Pacman tree lands in a known location separate from the system prefix.
+
+```bash
+cmake -S . -B build \
+  -DBUILD_VDPM_PACKAGE_CLIENT=ON \
+  -DVDPM_PACKAGE_CLIENT_INSTALL_PREFIX="$PWD/stage"
+```
+
+To reuse a shared download cache across builds, add `-DVDPM_DOWNLOAD_DIR=/path/to/cache`. The downloads directory is keyed in CI against the hash of `cmake/PackageClientVersions.cmake`.
+
+### Build the package-client target
+
+```bash
+cmake --build build --target vdpm-package-client --parallel
+```
+
+This drives the full dependency chain: zlib → xz → OpenSSL → libarchive + curl (in parallel) → Pacman → license collection.
+
+### Install
+
+```bash
+cmake --build build --target install
+```
+
+The install step copies `pacman` and `pacman-conf` to `libexec/vdpm/` under the configured prefix and collects all license texts into `share/vdpm/licenses/`.
+
+</Steps>
+
+## Supported host platforms
+
+The CMake superbuild path supports the following host configurations. Cross-compilation is limited to the Linux-to-FreeBSD case; all other targets must build natively.
+
+| Host triplet | How it is built |
+|---|---|
+| `x86_64-linux-gnu` | Native, inside `ubuntu:20.04` container (caps glibc at 2.31) |
+| `aarch64-linux-gnu` | Native on ARM runner, inside `ubuntu:20.04` container |
+| `x86_64-linux-musl` | Native, inside `alpine:3.20` container |
+| `aarch64-linux-musl` | Native on ARM runner, inside `alpine:3.20` |
+| `arm64-apple-darwin` | Native on macOS 15 |
+| `x86_64-apple-darwin` | Native on macOS 15 Intel |
+| `x86_64-unknown-freebsd` | Cross-compiled from Linux; binaries tested in a FreeBSD 14.3 VM |
+| `aarch64-unknown-freebsd` | Cross-compiled from Linux on ARM; tested in a FreeBSD 14.3 VM |
+| `x86_64-w64-mingw32` | Built under MSYS via `tests/pacman/msys-pacman-build.sh` (see below) |
+
+<Note>
+Attempting to use the CMake superbuild on Windows produces a `FATAL_ERROR`. The Windows package client is built through a separate MSYS script, not the CMake `ExternalProject` chain.
+</Note>
+
+## Windows: building under MSYS
+
+On Windows the Pacman build uses `tests/pacman/msys-pacman-build.sh`, which runs inside an MSYS2 shell. The script clones Pacman at the pinned tag (`v7.1.0`, commit `5683f8477a0afcc6b331766175a83445b2dcfe89`), verifies the revision, applies the four applicable patches (all except `0003-build-libalpm-with-mingw.patch`, which is already handled by the MSYS toolchain), and builds with Meson.
+
+<Steps>
+
+### Install MSYS2 packages
+
+The following MSYS2 packages are required:
+
+```
+base-devel git gcc meson ninja pkgconf gettext-devel
+heimdal-devel libarchive-devel libcurl-devel libsqlite-devel
+libunistring-devel openssl-devel ca-certificates
+```
+
+### Run the build script
+
+```bash
+./tests/pacman/msys-pacman-build.sh /path/to/output
+```
+
+The script produces `pacman.exe`, `vdpm-channel.exe`, and `msys-2.0.dll` in the output directory, validates DLL imports (only `msys-2.0.dll`, `crypt32.dll`, and `kernel32.dll` are permitted for `pacman.exe`), and copies license texts for all bundled components.
+
+### Verify the transaction runtime
+
+```powershell
+./tests/pacman/msys-runtime-smoke.ps1 `
+  -WorkDirectory $env:TEMP\vdpm-smoke `
+  -FixtureTar bsdtar.exe `
+  -PacmanExecutable /path/to/output/pacman.exe `
+  -RuntimeDll /path/to/output/msys-2.0.dll
+```
+
+</Steps>
+
+The Windows bundle places `pacman.exe`, `vdpm-channel.exe`, and `msys-2.0.dll` under `share/vdpm/msys/usr/bin/` inside the SDK tree. That directory acts as its own MSYS root, so the `/bin → /usr/bin` mount is satisfied without any host MSYS installation.
+
+## Release bundles
+
+Release bundles are produced by `scripts/build-and-bundle.sh`, which wraps the full configure → build → install → bundle → validate cycle. Each bundle is a reproducible `.tar.bz2` archive named `vdpm-<version>-<host>.tar.bz2` accompanied by a `.sha256` checksum file.
+
+The archive includes a `share/vdpm/release-info.txt` manifest with the schema version, host triplet, version string, source revision (normalized to lower-case hex), `SOURCE_DATE_EPOCH`, and the pinned Pacman commit. File timestamps inside the archive are normalised to `SOURCE_DATE_EPOCH` and ownership is set to `0:0` for reproducibility.
+
+### CI workflow
+
+The `.github/workflows/release.yml` workflow builds all nine host bundles in parallel jobs and applies the following release policy:
+
+- Tags matching `v*` trigger a publish run; all other runs (pull requests, pushes to `master`) build and validate bundles but do not publish.
+- The `collect` job downloads every artifact, runs `validate-release-bundle.sh` against each one, cross-checks SHA-256 checksums, and produces a combined `SHA256SUMS` manifest.
+- The `publish` job creates the GitHub release as a **draft**, uploads all assets, downloads them back, and performs a byte-for-byte `diff` before calling `gh release edit --draft=false` to make the release public.
+
+<Note>
+These bundles contain the vdpm package manager only — not the VitaSDK compiler toolchain. The `autobuilds` repository assembles the final `vitasdk-bootstrap-<host>` archives that the bootstrap scripts consume.
+</Note>
+
+## Pinned dependency versions
+
+All source URLs and SHA-256 hashes are centralized in `cmake/PackageClientVersions.cmake`. The versions currently pinned are:
+
+<CodeGroup>
+
+```cmake cmake/PackageClientVersions.cmake
+set(ZLIB_VERSION 1.3.1)
+set(XZ_VERSION 5.8.3)
+set(LIBARCHIVE_VERSION 3.8.9)
+set(OPENSSL_VERSION 3.5.7)
+set(CURL_VERSION 8.21.0)
+set(PACMAN_VERSION 7.1.0)
+set(PACMAN_REPOSITORY https://gitlab.archlinux.org/pacman/pacman.git)
+set(PACMAN_TAG v${PACMAN_VERSION})
+set(PACMAN_COMMIT 5683f8477a0afcc6b331766175a83445b2dcfe89)
+```
+
+</CodeGroup>
+
+To update a dependency, change both the version and the corresponding `_HASH` variable in that file. The CI download cache is keyed on the hash of `cmake/PackageClientVersions.cmake`, so any change to that file invalidates the cache and triggers a fresh download on the next run.

@@ -1,47 +1,231 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "vdpm Quickstart: Install and Manage VitaSDK Packages"
+sidebarTitle: "Quickstart"
+description: "Go from a fresh VitaSDK install to building with zlib, SDL2, and libpng in minutes. Covers install, search, info, files, upgrade, and remove."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
-
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
+This guide walks you from a working VitaSDK installation to actively managing packages. You will install libraries, search the repository, inspect package metadata, upgrade everything at once, and remove a package — all without touching anything outside `$VITASDK`.
 
 ## Prerequisites
 
-Before you begin, you must have:
+Before continuing, make sure you have:
 
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
+- A VitaSDK installation on disk (see [Installation](/installation) if you need one)
+- The `VITASDK` environment variable set to your install path
+- `$VITASDK/bin` prepended to your `PATH`
 
-## Get started
+You can verify both at once:
+
+```sh
+echo $VITASDK
+vdpm status
+```
+
+If `vdpm status` prints release, sequence, and toolchain information, you are ready to proceed.
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
+  <Step title="Check which series is active">
+    `vdpm status` shows the active release series, the channel manifest sequence number, the installed toolchain package version, and the total number of tracked packages. Run it before any session where you plan to install or upgrade packages to confirm you are on the series you expect.
 
-    ```bash
-    npm install your-package
+    ```sh
+    vdpm status
+    ```
+
+    Example output:
+
+    ```
+    Release   2025.04
+    Sequence  42
+    Toolchain 2025.04-1
+    Packages  1
+    Installed 2025.04-1
+    ```
+
+    If the status line reads `deprecated` or `end-of-life`, vdpm will say so and point you at `vdpm channels` for current alternatives.
+  </Step>
+
+  <Step title="List available channels">
+    `vdpm channels` downloads the signed channel index and prints every known release series alongside its status. Statuses include `supported`, `deprecated`, and `end-of-life`.
+
+    ```sh
+    vdpm channels
+    ```
+
+    To switch to a different series, pass its name to `vdpm refresh`:
+
+    ```sh
+    vdpm refresh nightly
+    ```
+
+    <Note>
+      `vdpm refresh` requires a series name — it has no default. Run `vdpm channels` first if you are unsure what series names are available.
+    </Note>
+  </Step>
+
+  <Step title="Install packages">
+    Pass one or more package names to `vdpm install`. It fetches each package from the verified databases and installs it under `$VITASDK`. Packages already at the current version are skipped automatically (use `--force` to reinstall regardless).
+
+    ```sh
+    vdpm install zlib sdl2 libpng
+    ```
+
+    You can install as many packages as you need in a single invocation:
+
+    ```sh
+    vdpm install zlib bzip2 libzip libpng libjpeg-turbo sdl2 sdl2_image openssl curl
+    ```
+
+    <Tip>
+      The legacy form `vdpm PACKAGE...` (without the `install` subcommand) still works and maps directly to `vdpm install PACKAGE...`. Both forms are equivalent.
+    </Tip>
+  </Step>
+
+  <Step title="Search for a package">
+    `vdpm search` queries the sync databases for packages whose name or description matches the given term. The search is performed against the verified local copy of the package databases.
+
+    ```sh
+    vdpm search image
+    ```
+
+    You can pass multiple terms to narrow the results:
+
+    ```sh
+    vdpm search audio mixer
     ```
   </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
 
-    ```bash
-    your-cli init
+  <Step title="Get package information">
+    `vdpm info` prints the full metadata record for a package from the sync database: version, description, dependencies, conflicts, URL, and more.
+
+    ```sh
+    vdpm info sdl2
+    ```
+
+    Pass multiple names to inspect several packages at once:
+
+    ```sh
+    vdpm info sdl2 sdl2_image sdl2_mixer
     ```
   </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
 
-    ```bash
-    your-cli start
+  <Step title="See installed files">
+    `vdpm files` lists every file that a package installed into `$VITASDK`. This is useful for finding the exact header or library path to add to your build system.
+
+    ```sh
+    vdpm files sdl2
     ```
+
+    The output is a flat list of paths relative to `$VITASDK`, for example:
+
+    ```
+    vitasdk-sdl2 /usr/local/vitasdk/arm-vita-eabi/include/SDL2/SDL.h
+    vitasdk-sdl2 /usr/local/vitasdk/arm-vita-eabi/lib/libSDL2.a
+    ...
+    ```
+  </Step>
+
+  <Step title="List all installed packages">
+    `vdpm list` queries the local pacman database and prints every package currently installed in the SDK, along with its installed version.
+
+    ```sh
+    vdpm list
+    ```
+
+    Pass package names to query specific ones:
+
+    ```sh
+    vdpm list zlib sdl2
+    ```
+  </Step>
+
+  <Step title="Upgrade all packages">
+    `vdpm upgrade` with no arguments performs a full system upgrade — it checks every installed package against the current databases and upgrades any that have a newer version available.
+
+    ```sh
+    vdpm upgrade
+    ```
+
+    To upgrade only specific packages, pass their names:
+
+    ```sh
+    vdpm upgrade zlib libpng
+    ```
+
+    <Note>
+      On Windows, if the upgrade would replace `vitasdk-core` (which includes `vdpm.exe` and `pacman.exe` themselves), vdpm will refuse and explain that you need to re-run the bootstrap script instead. Windows cannot overwrite a running executable mid-transaction.
+    </Note>
+  </Step>
+
+  <Step title="Remove a package">
+    `vdpm remove` uninstalls one or more packages and removes their files from `$VITASDK`. The pacman database is updated to reflect the removal.
+
+    ```sh
+    vdpm remove zlib
+    ```
+
+    Remove multiple packages in one command:
+
+    ```sh
+    vdpm remove zlib libpng libjpeg-turbo
+    ```
+
+    <Warning>
+      vdpm does not automatically remove reverse dependencies. If other installed packages depend on what you are removing, remove them first or verify they are no longer needed.
+    </Warning>
   </Step>
 </Steps>
 
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
+## Available packages (full list)
 
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
-</Tip>
+<Accordion title="Available packages (full list)">
+  The following packages are available in the VitaSDK repository. Install any of them with `vdpm install <name>`.
+
+  | Package | Package | Package |
+  |---|---|---|
+  | `zlib` | `bzip2` | `libzip` |
+  | `libpng` | `libexif` | `libjpeg-turbo` |
+  | `jansson` | `yaml-cpp` | `freetype` |
+  | `harfbuzz` | `fftw` | `libvita2d` |
+  | `libvita2d_ext` | `libmad` | `libogg` |
+  | `libvorbis` | `flac` | `libtheora` |
+  | `libtremor` | `libmikmod` | `libftpvita` |
+  | `henkaku` | `taihen` | `kubridge` |
+  | `libk` | `libdebugnet` | `onigmo` |
+  | `libwebp` | `sdl` | `sdl_image` |
+  | `sdl_mixer` | `sdl_net` | `sdl_ttf` |
+  | `sdl_gfx` | `sdl2` | `sdl2_image` |
+  | `sdl2_mixer` | `sdl2_net` | `sdl2_ttf` |
+  | `sdl2_gfx` | `openal-soft` | `openssl` |
+  | `curl` | `curlpp` | `expat` |
+  | `opus` | `opusfile` | `unrar` |
+  | `glm` | `libxml2` | `speexdsp` |
+  | `pixman` | `TinyGL` | `kuio` |
+  | `taipool` | `mpg123` | `libmpeg2` |
+  | `soloud` | `quirc` | `box2d` |
+  | `libsndfile` | `xz` | `libarchive` |
+  | `bullet` | `libimagequant` | `libmodplug` |
+  | `libconfig` | `libsodium` | `vitaShaRK` |
+  | `libmathneon` | `vitaGL` | `imgui` |
+  | `imgui-vita2d` | `libbaremetal` | `minizip` |
+  | `jsoncpp` | `lame` | `ffmpeg` |
+  | `physfs` | `vita-rss-libdl` | `luajit` |
+  | `tinyxml2` | `cpython` | `cpython3` |
+  | `asio` | `assimp` | `opensles` |
+  | `cpr` | `libintl` | `libopenmpt` |
+  | `libvpx` | `zstd` | `libpcre2` |
+  | `fribidi` | `libass` | `websocketpp` |
+  | `wslay` | `SceShaccCgExt` | `boost` |
+  | `pib` | `libxmp` | `libxmp-lite` |
+  | `sdl3` | `sdl3_image` | `sdl3_ttf` |
+</Accordion>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Command Reference" icon="terminal" href="/commands/install">
+    Every vdpm subcommand, flag, and environment variable documented in detail, including the raw `vdpm pacman --` passthrough.
+  </Card>
+  <Card title="Guides" icon="book-open" href="/guides">
+    Step-by-step guides for common tasks: switching channels, setting up CI, offline installs, and building your first Vita homebrew project.
+  </Card>
+</CardGroup>

@@ -1,0 +1,176 @@
+---
+title: "vdpm Channel Security and the Full Trust Chain Explained"
+sidebarTitle: "Channel Security"
+description: "How vdpm's Ed25519-signed channel manifests, database hash checks, and staged commits combine to form a fail-closed package integrity model."
+---
+
+Every package vdpm installs passes through a chain of cryptographic checks before it is written to disk. The trust model is layered: the bootstrap establishes the verifier, the channel manifest authenticates the package databases, and pacman enforces per-package hashes from those databases. This page traces each step in that chain, explains the deliberate design choices, and documents the `vdpm-channel` subcommands that implement it.
+
+---
+
+## The trust chain
+
+<Steps>
+  ### Bootstrap establishes the trust anchor
+
+  The bootstrap scripts (`bootstrap-vitasdk.sh` and `bootstrap-vitasdk.ps1`)
+  name an exact seed release (`v0.1.6`) and download it from GitHub over HTTPS.
+  The seed contains the vdpm front end, the pacman binary, and — crucially —
+  the `vdpm-channel` helper that performs all later verification.
+
+  <Warning>
+    Getting the bytes of the seed archive right is delegated to **GitHub and to
+    HTTPS**. This is a deliberate design choice: the alternative is to pin the
+    SHA-256 of every host-specific bundle in the bootstrap script itself, which
+    would require every release to be cut in two passes so those digests exist
+    before the release tag does. The bootstrap instead trusts the transport and
+    the release host for this one step. From the seed onwards nothing is taken
+    on trust.
+  </Warning>
+
+  ### Bootstrap verifies the channel public key
+
+  Even though the seed delivery is trusted to HTTPS, the bootstrap performs one
+  additional check that HTTPS cannot: it computes the SHA-256 of the channel
+  public key file inside the seed and compares it to a value hardcoded in the
+  bootstrap script:
+
+  ```
+  c02df2e12216f6f633d94206634bbe8f244d74f610b29e922d7ea8bab2efb307
+  ```
+
+  This does not detect a tampered `vdpm-channel` binary — the seed is the
+  program that does every later check, so nothing inside it can be its own
+  judge. What it does catch is a seed that carries a *different* channel key:
+  a stale release, a mirror serving an old bundle, or a publishing mistake
+  could produce a correctly-signed archive that nonetheless points at the wrong
+  trust root. The key digest check catches that before any manifest is read.
+
+  ### `vdpm refresh` downloads the manifest and signature
+
+  `vdpm refresh <series>` downloads two files from
+  `$VITASDK_CHANNEL_BASE_URL` (default: `https://vitasdk.org/channels`):
+
+  - `<series>.json` — the channel manifest
+  - `<series>.json.sig` — the detached Ed25519 signature
+
+  Both files land in a temporary directory. If `VITASDK_CHANNEL_MANIFEST` is
+  set, the manifest is copied from that path instead of downloaded — the
+  signature file must exist at the same path with `.sig` appended.
+
+  ### `vdpm-channel verify` authenticates the manifest
+
+  Before a single field in the manifest is read, the refresh script calls:
+
+  ```bash
+  vdpm-channel verify channel.json channel.json.sig \
+    "$VITASDK/share/vdpm/channel-public-key.pem"
+  ```
+
+  If the Ed25519 signature does not verify against the public key, the command
+  exits non-zero and the refresh script exits immediately. Nothing is written to
+  the SDK. The manifest is **never parsed before it is verified**.
+
+  ### `vdpm-channel validate` checks the manifest structure
+
+  After the signature passes, `vdpm-channel validate` checks that the manifest
+  is internally consistent: the correct channel name is present, the manifest
+  contains an entry for the current host triplet, and the required fields
+  (server URLs, database names, SHA-256 hashes) are all present. A manifest
+  that passes signature verification but is missing fields for this host is
+  rejected at this step.
+
+  ### Database files are hash-verified before installation
+
+  The manifest contains the SHA-256 of each pacman database file. After
+  downloading the core and packages databases, the refresh script calls
+  `vdpm-channel sha256` on each file and compares the result to the hash in the
+  manifest:
+
+  ```bash
+  # Pseudo-code from refresh-repositories.sh
+  download_database "<core-url>" "<core-name>" "$core_database"
+  download_database "<packages-url>" "<packages-name>" "$vita_database"
+  vdpm-channel sha256 "$core_database"   # compared to manifest value
+  vdpm-channel sha256 "$vita_database"   # compared to manifest value
+  ```
+
+  If either hash does not match, the refresh exits before touching
+  `$VITASDK/var/lib/pacman/sync/`. The previous database files remain in place.
+
+  If `VITASDK_CHANNEL_ASSET_DIRECTORY` is set, database files are read from
+  that directory instead of downloaded. The hash check runs regardless.
+
+  ### Verified databases are written to the sync directory
+
+  Only after both database files have been hash-verified are they copied to
+  `$VITASDK/var/lib/pacman/sync/`. At the same time, `vdpm refresh` writes a
+  new `$VITASDK/etc/pacman.conf` containing the correct repository URLs, server
+  addresses, and world for the selected series. The `SigLevel = Never` line in
+  that configuration is intentional — vdpm owns the verification layer through
+  the channel manifest, and the pacman-level GPG path is not used.
+
+  ### Pacman enforces per-package hashes from the verified database
+
+  When vdpm installs or upgrades a package, pacman checks the downloaded
+  package against the hash recorded in the database that was just verified.
+  Because the database was accepted only after its own hash matched the
+  signed manifest, the full chain is: Ed25519 signature → database hash →
+  package hash.
+
+  ### The channel manifest is committed atomically after the transaction
+
+  During `vdpm refresh`, the verified manifest is staged as
+  `$VITASDK/var/lib/vdpm/channel.json.staged`. The rename to
+  `$VITASDK/var/lib/vdpm/channel.json` happens only after the pacman
+  transaction that moves the toolchain to the new series completes
+  successfully:
+
+  ```c
+  /* from src/vdpm.c */
+  if (command == COMMAND_REFRESH) {
+      status = spawn_and_wait(pacman, arguments);
+      if (status == 0)
+          status = commit_staged_channel(root);
+  }
+  ```
+
+  An interrupted refresh — a crash, a Ctrl-C, a network failure — leaves the
+  previous `channel.json` in place. The installation continues to use the
+  series it was actually running before the interrupted refresh began.
+</Steps>
+
+---
+
+## Fail-closed behavior
+
+The entire model is designed to fail closed:
+
+- A manifest whose Ed25519 signature fails verification is not parsed, and nothing is written to the sync directory.
+- A database whose SHA-256 does not match the manifest is not copied to the sync directory.
+- A transaction that fails does not advance the staged manifest to the committed position.
+- A refresh that cannot find the public key at `$VITASDK_CHANNEL_PUBLIC_KEY` refuses to proceed.
+
+There is no fallback to an unverified path.
+
+---
+
+## `vdpm-channel` subcommand reference
+
+`vdpm-channel` is a self-contained binary installed at `$VITASDK/bin/vdpm-channel` (Unix) or `$VITASDK\share\vdpm\msys\usr\bin\vdpm-channel.exe` (Windows). All verification, parsing, and digest operations go through it so that no security decision depends on the particular shell or command-line tools installed on the host.
+
+| Subcommand | Purpose |
+|---|---|
+| `verify <manifest> <sig> <pubkey>` | Verifies the Ed25519 signature of a manifest or index file. Exits non-zero if the signature does not match the key. |
+| `validate <manifest> <channel> <host>` | Checks that the manifest is internally consistent: the correct channel name is present and all required fields exist for the given host triplet. |
+| `field <manifest> <channel> <host> <key>` | Extracts a single value from the manifest by field name. Used by the refresh script to read server URLs, database names, and SHA-256 hashes without parsing JSON in shell. |
+| `describe <manifest>` | Prints key fields from a channel manifest as tab-separated `key<TAB>value` lines. Used by vdpm to produce the release banner printed before every transaction. |
+| `series <index>` | Reads the release index and prints one tab-separated line per series: name, status, summary, and world. Used by `vdpm channels` and by the bootstrap to select the newest supported series. |
+| `deprecated <manifest>` | Prints tab-separated `package<TAB>reason` lines for packages marked deprecated in the manifest. Used by vdpm to warn before installing a deprecated package. |
+| `sha256 <file>` | Prints the SHA-256 hex digest of a file. Used by the refresh script to verify downloaded database files against the hashes in the manifest. |
+
+---
+
+## Key storage
+
+The production Ed25519 public key is committed at `share/vdpm/channel-public-key.pem` in the vdpm repository and is installed into every SDK at `$VITASDK/share/vdpm/channel-public-key.pem`. Its SHA-256 is hardcoded in both bootstrap scripts. Any channel manifest not signed by the corresponding private key will be rejected by every installed SDK.

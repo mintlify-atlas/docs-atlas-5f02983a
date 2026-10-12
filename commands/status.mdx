@@ -1,0 +1,73 @@
+---
+title: "Inspect Your VitaSDK Installation Status with vdpm"
+sidebarTitle: "Status"
+description: "Display the active release, sequence number, toolchain, package database, installed core version, and support status for your VitaSDK prefix."
+---
+
+The `status` command answers the question "which VitaSDK is this?" by reading the committed channel manifest and querying the local pacman database. It reports the configured release series alongside the version of `vitasdk-core` that pacman actually has installed, so an interrupted refresh or a manually unpacked SDK root answers differently from one that was properly installed.
+
+## Usage
+
+```
+vdpm status
+```
+
+No arguments are accepted.
+
+## Output
+
+```
+Release   2024.11
+Sequence  42
+Toolchain arm-vita-eabi-gcc-14.2.0
+Packages  vita-2024.11
+Installed 14.2.0-1
+Status    supported
+```
+
+| Field | Source | Description |
+|---|---|---|
+| `Release` | `$VITASDK/var/lib/vdpm/channel.json` | The name of the active release series. |
+| `Sequence` | `$VITASDK/var/lib/vdpm/channel.json` | Monotonically increasing number identifying this snapshot within the series. |
+| `Toolchain` | `$VITASDK/var/lib/vdpm/channel.json` | The core package name shipped by this series. |
+| `Packages` | `$VITASDK/var/lib/vdpm/channel.json` | The packages repository name for this series. |
+| `Installed` | pacman local database (`--query vitasdk-core`) | The version string of the `vitasdk-core` package currently registered with pacman. |
+| `Status` | `$VITASDK/var/lib/vdpm/index.json` | The support status of the active series (`supported`, `deprecated`, or `end-of-life`). |
+
+## No channel configured
+
+If `$VITASDK/var/lib/vdpm/channel.json` does not exist — for example, because the SDK was bootstrapped without completing a `refresh` — vdpm exits with an error:
+
+```
+vdpm: no channel configured; run `vdpm refresh` first
+```
+
+Run `vdpm channels` to list available series, then `vdpm refresh <series>` to configure one.
+
+## Unregistered toolchain
+
+If `vitasdk-core` is not in the pacman local database — for example, because the SDK root was unpacked from an archive rather than installed through vdpm — the `Installed` line reads:
+
+```
+Installed no registered toolchain: this prefix was unpacked rather than installed, so upgrades cannot reach it
+```
+
+## Support status warnings
+
+<Note>
+  When the `Status` field is `end-of-life`, the release banner printed by other
+  commands will also carry a warning:
+
+  ```
+  :: 2023.05 is no longer maintained; `vdpm channels` lists what is current
+  ```
+
+  When the status is `deprecated`:
+
+  ```
+  :: 2024.06 is deprecated; `vdpm channels` lists what replaces it
+  ```
+
+  Run `vdpm channels` followed by `vdpm refresh <series>` to move to a
+  supported release.
+</Note>

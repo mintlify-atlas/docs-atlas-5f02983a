@@ -1,0 +1,172 @@
+---
+title: "Using vdpm in CI Pipelines and Automated SDK Builds"
+sidebarTitle: "CI Automation"
+description: "Reproducible VitaSDK installs for GitHub Actions and other CI systems: pinned archives, non-interactive mode, caching, and offline refresh."
+---
+
+vdpm is designed to work in headless CI environments without modification. The key primitives are: a `--url`/`--sha256` pair that pins an exact archive, `VDPM_NONINTERACTIVE=1` that suppresses all interactive output, and `VITASDK_CHANNEL` that selects a release series at bootstrap time. This page shows how to combine them for reliable, reproducible builds.
+
+---
+
+## Reproducible installs with a pinned archive
+
+The simplest path to a reproducible CI install is to name an exact archive URL and its SHA-256 hash. The bootstrap verifies the hash before extracting anything; if the file has changed at the source, the build fails immediately rather than silently using a different toolchain.
+
+```bash
+./bootstrap-vitasdk.sh \
+  --url 'https://github.com/vitasdk/autobuilds/releases/download/<tag>/<asset>' \
+  --sha256 '<64 hex characters>'
+```
+
+When both `--url` and `--sha256` are given, the bootstrap installs that exact archive and selects no series — the installation reflects exactly what was in the archive, with no network resolution of the channel index. To also place the installation on a tracked series (so that `vdpm upgrade` and `vdpm refresh` work later), add `VITASDK_CHANNEL`:
+
+```bash
+VITASDK_CHANNEL=nightly ./bootstrap-vitasdk.sh \
+  --url 'https://github.com/vitasdk/autobuilds/releases/download/<tag>/<asset>' \
+  --sha256 '<64 hex characters>'
+```
+
+<Tip>
+  The SHA-256 sidecar file (e.g. `asset.tar.bz2.sha256`) published alongside
+  each release contains the correct digest. The bootstrap reads it automatically
+  if the URL is provided but `--sha256` is omitted — but pinning the hash
+  explicitly in your CI configuration makes the check reproducible without a
+  network round-trip to the sidecar.
+</Tip>
+
+---
+
+## Non-interactive mode
+
+Set `VDPM_NONINTERACTIVE=1` to suppress all pacman prompts and progress bars. When this variable is set to `1`, vdpm passes `--noconfirm --noprogressbar` to every transaction — install, remove, upgrade, and refresh. Without it, pacman may pause waiting for a terminal confirmation that no CI runner will provide.
+
+```bash
+VDPM_NONINTERACTIVE=1 vdpm install zlib sdl2 libpng
+VDPM_NONINTERACTIVE=1 vdpm upgrade
+```
+
+The bootstrap script also uses this flag internally during the seed-to-packages phase; you do not need to set it for the bootstrap itself.
+
+---
+
+## Selecting a release series
+
+Set `VITASDK_CHANNEL` before calling the bootstrap to install a specific series. Without it, the bootstrap downloads and verifies the signed release index and selects the newest series marked `supported` for the `vita` world.
+
+```bash
+# Install the nightly series
+VITASDK_CHANNEL=nightly ./bootstrap-vitasdk.sh
+
+# Install a specific dated series
+VITASDK_CHANNEL=2026.09 ./bootstrap-vitasdk.sh
+```
+
+After bootstrapping, the installed SDK is pinned to the selected series. `vdpm refresh <series>` can switch it later.
+
+---
+
+## Custom install directory
+
+Use `--install-dir` or set `VITASDK` before calling the script to control where the SDK lands. The bootstrap refuses to write to a path that already exists, which prevents accidentally overwriting a cached install.
+
+```bash
+VITASDK=/opt/vitasdk ./bootstrap-vitasdk.sh
+# or equivalently:
+./bootstrap-vitasdk.sh --install-dir /opt/vitasdk
+```
+
+---
+
+## Offline and air-gapped installs
+
+For environments with no outbound internet access, both the archive and the channel databases can be pre-staged.
+
+**Pre-staged archive** — set `VITASDK_BOOTSTRAP_ARCHIVE` to a locally available copy of the SDK archive. `VITASDK_BOOTSTRAP_SHA256` is still required and still verified:
+
+```bash
+VITASDK_BOOTSTRAP_ARCHIVE=/mnt/share/vitasdk.tar.bz2 \
+VITASDK_BOOTSTRAP_SHA256='<64 hex characters>' \
+./bootstrap-vitasdk.sh --install-dir /opt/vitasdk
+```
+
+**Pre-staged databases** — for offline `vdpm refresh`, set `VITASDK_CHANNEL_ASSET_DIRECTORY` to a directory containing the pre-downloaded `.db` files. The SHA-256 of each file is still checked against the channel manifest before the files are written to `$VITASDK/var/lib/pacman/sync/`:
+
+```bash
+VITASDK_CHANNEL_ASSET_DIRECTORY=/mnt/share/vitasdk-dbs \
+vdpm refresh nightly
+```
+
+**Local manifest** — to skip manifest download entirely, set `VITASDK_CHANNEL_MANIFEST` to the path of a pre-downloaded manifest file. A `.sig` file must exist at the same path. Signature verification still runs:
+
+```bash
+VITASDK_CHANNEL_MANIFEST=/mnt/share/nightly.json \
+VITASDK_CHANNEL_ASSET_DIRECTORY=/mnt/share/vitasdk-dbs \
+vdpm refresh nightly
+```
+
+---
+
+## GitHub Actions example
+
+The following workflow installs VitaSDK into `/opt/vitasdk`, adds the toolchain to `PATH`, and installs packages non-interactively. The `VITASDK` environment variable is exported for subsequent steps using `$GITHUB_ENV`.
+
+```yaml
+- name: Install VitaSDK
+  run: |
+    git clone https://github.com/vitasdk/vdpm
+    cd vdpm
+    VITASDK_CHANNEL=nightly ./bootstrap-vitasdk.sh --install-dir /opt/vitasdk
+    echo "/opt/vitasdk/bin" >> $GITHUB_PATH
+    echo "VITASDK=/opt/vitasdk" >> $GITHUB_ENV
+
+- name: Install packages
+  run: |
+    VDPM_NONINTERACTIVE=1 vdpm install zlib sdl2 libpng
+```
+
+For a fully reproducible build, replace the automatic bootstrap with a pinned archive:
+
+```yaml
+- name: Install VitaSDK (pinned)
+  run: |
+    git clone https://github.com/vitasdk/vdpm
+    cd vdpm
+    VITASDK_CHANNEL=nightly ./bootstrap-vitasdk.sh \
+      --install-dir /opt/vitasdk \
+      --url 'https://github.com/vitasdk/autobuilds/releases/download/<tag>/<asset>' \
+      --sha256 '<64 hex characters>'
+    echo "/opt/vitasdk/bin" >> $GITHUB_PATH
+    echo "VITASDK=/opt/vitasdk" >> $GITHUB_ENV
+```
+
+---
+
+## Caching the package cache
+
+The pacman package cache lives at `$VITASDK/var/cache/pacman/pkg/`. Caching this directory between runs avoids re-downloading packages that have not changed. In GitHub Actions:
+
+```yaml
+- name: Cache VitaSDK package cache
+  uses: actions/cache@v4
+  with:
+    path: /opt/vitasdk/var/cache/pacman/pkg
+    key: vitasdk-pkg-cache-${{ runner.os }}-${{ hashFiles('**/packages.txt') }}
+    restore-keys: |
+      vitasdk-pkg-cache-${{ runner.os }}-
+```
+
+Packages already present in the cache are used by pacman without downloading; packages that have been updated are downloaded normally.
+
+---
+
+## Windows CI and core upgrades
+
+<Note>
+  On Windows, `vdpm upgrade` checks whether the `vitasdk-core` package (which
+  includes `vdpm.exe` and `pacman.exe`) would be replaced. If so, it refuses
+  with an error message and instructs you to re-run `bootstrap-vitasdk.ps1`
+  instead. Windows cannot overwrite a running executable, and attempting to do
+  so mid-transaction would leave the installation in a broken state. For
+  Windows CI pipelines that need to upgrade the core toolchain, use the
+  PowerShell bootstrap script in place of `vdpm upgrade`.
+</Note>
